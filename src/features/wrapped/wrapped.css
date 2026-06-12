@@ -1,0 +1,210 @@
+/* Wrapped design tokens */
+.wrapped-view {
+  --w-text-primary: #282828;
+  --w-text-secondary: #6B6B70;
+  --w-text-tertiary: #A8A8AE;
+  --w-border: #E5E3DE;
+  --w-border-light: #EEEDEA;
+  --w-surface: #FAFAF8;
+  --w-bg: #FEFEFE;
+  --w-blue: #5A9BDB;
+  --w-red: #D45A5A;
+  --w-orange: #D4922D;
+  --w-green: #5BA85B;
+
+  /* App view-icon palette */
+  --w-indigo: #5C6BC0;
+  --w-accent-blue: #1E88E5;
+  --w-gold: #F5C000;
+  --w-accent-red: #E53935;
+  --w-accent-green: #43A047;
+  --w-purple: #8E6AC8;
+  --w-blue-grey: #78909C;
+}
+
+:root.dark .wrapped-view {
+  --w-text-primary: #E8E8E8;
+  --w-text-secondary: #999;
+  --w-text-tertiary: #666;
+  --w-border: #3A3A3A;
+  --w-border-light: #2A2A2A;
+  --w-surface: #232323;
+  --w-bg: #1A1A1A;
+  --w-blue: #6AABEB;
+  --w-red: #E46A6A;
+  --w-orange: #E4A23D;
+  --w-green: #6BB86B;
+
+  /* App view-icon palette — brighter for dark mode */
+  --w-indigo: #7986CB;
+  --w-accent-blue: #42A5F5;
+  --w-gold: #FFD54F;
+  --w-accent-red: #EF5350;
+  --w-accent-green: #66BB6A;
+  --w-purple: #AB8FD8;
+  --w-blue-grey: #90A4AE;
+}
+
+/* Slide transitions */
+@keyframes slideInRight {
+  from {
+    transform: translateX(60px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-60px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes barGrow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes confettiFall {
+  0% {
+    transform: translateY(-20px) rotate(0deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(600px) rotate(900deg);
+    opacity: 0;
+  }
+}
+
+@keyframes progressPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.wrapped-slide-right {
+  animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.wrapped-slide-left {
+  animation: slideInLeft 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.wrapped-fade-in {
+  animation: fadeIn 0.5s ease forwards;
+}
+
+.wrapped-count-up {
+  animation: countUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.wrapped-bar-grow {
+  animation: barGrow 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: bottom;
+}
+
+.wrapped-slide-up {
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Staggered animations */
+.wrapped-stagger > * {
+  opacity: 0;
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.wrapped-stagger > *:nth-child(1) { animation-delay: 0.1s; }
+.wrapped-stagger > *:nth-child(2) { animation-delay: 0.15s; }
+.wrapped-stagger > *:nth-child(3) { animation-delay: 0.2s; }
+.wrapped-stagger > *:nth-child(4) { animation-delay: 0.25s; }
+.wrapped-stagger > *:nth-child(5) { animation-delay: 0.3s; }
+.wrapped-stagger > *:nth-child(6) { animation-delay: 0.35s; }
+.wrapped-stagger > *:nth-child(7) { animation-delay: 0.4s; }
+.wrapped-stagger > *:nth-child(8) { animation-delay: 0.45s; }
+.wrapped-stagger > *:nth-child(9) { animation-delay: 0.5s; }
+.wrapped-stagger > *:nth-child(10) { animation-delay: 0.55s; }
+.wrapped-stagger > *:nth-child(11) { animation-delay: 0.6s; }
+.wrapped-stagger > *:nth-child(12) { animation-delay: 0.65s; }
+
+/* Glass card */
+.wrapped-card {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 0.5px solid rgba(255, 255, 255, 0.5);
+  border-radius: 14px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+:root.dark .wrapped-card {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Player layout */
+.wrapped-player {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+/* Slide container = the colorful card */
+.wrapped-slide-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  border-radius: 24px;
+  padding: 32px 40px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  transition: background 0.35s ease;
+}
+
+/* Confetti */
+.wrapped-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.wrapped-confetti-piece {
+  position: absolute;
+  top: -16px;
+  animation: confettiFall linear both;
+}
+
+/* Gradient text helper */
+.wrapped-gradient-text {
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

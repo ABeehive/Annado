@@ -1,0 +1,22 @@
+<svg viewBox="0 0 1024 1024" width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F7F5F2"/>
+      <stop offset="100%" style="stop-color:#ECEAE6"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="224" ry="224" fill="url(#bg)"/>
+  <!-- Icon mark centered -->
+  <g transform="translate(400, 520)">
+    <!-- Bowl of 'a' in dark -->
+    <path d="M60,-160 C-80,-160 -210,-80 -210,30 C-210,140 -120,200 -10,200 C80,200 136,144 156,84"
+          fill="none" stroke="#1a1a1a" stroke-width="56" stroke-linecap="round"/>
+    <!-- Stem top portion: dark -->
+    <path d="M156,-160 L156,20"
+          fill="none" stroke="#1a1a1a" stroke-width="56" stroke-linecap="round"/>
+    <!-- Stem lower + kick = ✓ in terracotta -->
+    <path d="M156,20 L156,200 L336,-20"
+          fill="none" stroke="#D4634B" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

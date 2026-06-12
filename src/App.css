@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #5C6BC0;
+  --color-primary-dark: #5162B0;
+  --color-primary-light: #7986CB;
+  --color-danger: #E53935;
+  --color-danger-dark: #C62828;
+  --color-success: #43A047;
+  --color-warning: #F5C000;
+}
+
+/* Enable class-based dark mode instead of media query */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -moz-osx-font-smoothing: grayscale;
+  /* Subpixel antialiasing keeps text lighter than the grayscale default */
+  -webkit-font-smoothing: subpixel-antialiased;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* macOS title bar drag region */
+.titlebar-drag {
+  -webkit-app-region: drag;
+}
+
+/* Make interactive elements not draggable */
+button, input, select, textarea, a {
+  -webkit-app-region: no-drag;
+}
+
+/* Smooth transitions */
+* {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 120ms;
+}
+
+/* Auto-hide scrollbars — thumb invisible until container is hovered */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+:hover::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.dark :hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.dark :hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Dark mode support */
+.dark {
+  color-scheme: dark;
+}
+
+/* Task expand detail section — grid row animation */
+.task-expand-detail {
+  display: grid;
+  grid-template-rows: 0fr;
+  /* Collapse: quicker, accelerating */
+  transition: grid-template-rows 200ms cubic-bezier(0.4, 0, 1, 1);
+}
+
+.task-expand-detail[data-expanded="true"] {
+  grid-template-rows: 1fr;
+  /* Expand: slower, decelerating settle */
+  transition: grid-template-rows 250ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.task-expand-detail > * {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.task-expand-detail[data-expanded="true"] > * {
+  overflow: visible;
+}
+
+/* Side panel slide animation */
+.side-panel {
+  transition: width 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  overflow: hidden;
+}
+
+/* Selection color */
+::selection {
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+/* Task completion: row lingers, then collapses and fades out.
+   Total linger is COMPLETE_LINGER_MS (1600ms) in taskSlice.ts — the collapse
+   finishes just before the store drops the task from the list. */
+@keyframes taskCompleteCollapse {
+  0%   { opacity: 1; max-height: 90px; }
+  100% { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; }
+}
+.task-completing {
+  overflow: hidden;
+  max-height: 90px;
+  animation: taskCompleteCollapse 280ms cubic-bezier(0.4, 0, 1, 1) 1250ms forwards;
+}
+
+/* Checkbox pop when a task is checked off */
+@keyframes checkboxPop {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+.checkbox-pop {
+  animation: checkboxPop 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Review flashcard fade-in animation */
+@keyframes reviewFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: reviewFadeIn 150ms ease-out;
+}
+
