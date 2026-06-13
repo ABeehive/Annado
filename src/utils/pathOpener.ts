@@ -75,6 +75,30 @@ export function defaultOpener(openers: PathOpenerInfo[], path: string): string |
   return usable.some((o) => o.appId === OBSIDIAN_APP_ID) ? OBSIDIAN_APP_ID : null;
 }
 
+/**
+ * File-manager openers (`open`/`xdg-open`/`explorer <path>`) delegate a *file*
+ * to its default app rather than revealing it. So when opening a file with a
+ * file manager we hand it the containing folder instead; a directory path is
+ * passed through unchanged.
+ */
+const FILE_MANAGER_APP_IDS = new Set(['finder', 'file-manager', 'explorer']);
+
+export function isFileManager(appId: string): boolean {
+  return FILE_MANAGER_APP_IDS.has(appId);
+}
+
+function containingDir(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, '');
+  const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  return idx > 0 ? trimmed.slice(0, idx) : trimmed;
+}
+
+/** The path to actually hand `appId`: a file's containing folder for file managers. */
+export function openTargetFor(path: string, appId: string): string {
+  if (!isFileManager(appId)) return path;
+  return extensionOf(path) ? containingDir(path) : path;
+}
+
 /** Open `path` with the default rule: Obsidian if available, else OS default. */
 export function openEntityFile(path: string, openers: PathOpenerInfo[]): Promise<void> {
   const appId = defaultOpener(openers, path);

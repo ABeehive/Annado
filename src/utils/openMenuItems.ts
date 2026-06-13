@@ -2,6 +2,7 @@ import type { ContextMenuItem } from '../components/ContextMenu';
 import {
   openEntityFile,
   openWith,
+  openTargetFor,
   openersForPath,
   openLabel,
   type PathOpenerInfo,
@@ -29,7 +30,7 @@ export function buildOpenMenuItems(path: string, openers: PathOpenerInfo[]): Con
       label: 'Open with',
       submenu: usable.map((o) => ({
         label: o.name,
-        onClick: () => void openWith(path, o.appId).catch(console.error),
+        onClick: () => void openWith(openTargetFor(path, o.appId), o.appId).catch(console.error),
       })),
     });
   }
