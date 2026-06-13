@@ -19,13 +19,7 @@ pub struct AppConfig {
     pub excluded_paths: Vec<String>,
     #[serde(default)]
     pub is_obsidian_vault: bool,
-    #[serde(default = "default_editor_type")]
-    pub editor_type: String,
-    #[serde(default)]
-    pub editor_custom_command: String,
 }
-
-fn default_editor_type() -> String { "system".to_string() }
 
 fn get_config_path(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_config_dir().ok().map(|dir| dir.join("config.json"))
@@ -48,8 +42,6 @@ fn load_config(app: &AppHandle) -> AppConfig {
             let vault_path_buf = PathBuf::from(vault_path.trim());
             let config = AppConfig {
                 is_obsidian_vault: vault_path_buf.join(".obsidian").is_dir(),
-                editor_type: default_editor_type(),
-                editor_custom_command: String::new(),
                 vault_path: Some(vault_path.trim().to_string()),
                 folder_paths: FolderPaths::default(),
                 excluded_paths: Vec::new(),
@@ -532,69 +524,6 @@ pub fn set_is_obsidian_vault(value: bool, app: AppHandle) -> Result<(), String> 
     let mut vault_lock = get_vault_lock().write();
     if let Some(ref mut vault) = *vault_lock {
         vault.set_is_obsidian_vault(value);
-    }
-    Ok(())
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EditorConfig {
-    pub editor_type: String,
-    pub editor_custom_command: String,
-}
-
-#[tauri::command]
-pub fn get_editor_config(app: AppHandle) -> EditorConfig {
-    let config = load_config(&app);
-    EditorConfig {
-        editor_type: config.editor_type,
-        editor_custom_command: config.editor_custom_command,
-    }
-}
-
-#[tauri::command]
-pub fn set_editor_config(editor_type: String, editor_custom_command: String, app: AppHandle) -> Result<(), String> {
-    let mut config = load_config(&app);
-    config.editor_type = editor_type;
-    config.editor_custom_command = editor_custom_command;
-    save_config(&app, &config)
-}
-
-#[tauri::command]
-pub fn open_file_in_editor(
-    file_path: String,
-    line_number: usize,
-    editor_type: String,
-    custom_command: String,
-) -> Result<(), String> {
-    match editor_type.as_str() {
-        "sublime" => {
-            std::process::Command::new("open")
-                .arg("-a")
-                .arg("Sublime Text")
-                .arg(&file_path)
-                .spawn()
-                .map_err(|e| format!("Failed to open in Sublime Text: {}", e))?;
-        }
-        "custom" if !custom_command.is_empty() => {
-            let cmd = custom_command
-                .replace("{file}", &file_path)
-                .replace("{line}", &line_number.to_string());
-            let mut parts = cmd.split_whitespace();
-            let program = parts.next().ok_or("Empty custom command")?;
-            let args: Vec<&str> = parts.collect();
-            std::process::Command::new(program)
-                .args(args)
-                .spawn()
-                .map_err(|e| format!("Failed to run custom command: {}", e))?;
-        }
-        _ => {
-            // "system" or fallback: open with system default
-            std::process::Command::new("open")
-                .arg(&file_path)
-                .spawn()
-                .map_err(|e| format!("Failed to open file: {}", e))?;
-        }
     }
     Ok(())
 }

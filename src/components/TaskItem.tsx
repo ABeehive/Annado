@@ -5,7 +5,9 @@ import { useTaskStore } from '../stores/taskStore';
 import { usePanelState } from '../hooks/usePanelState';
 import { PRIORITY_CONFIG } from '../utils/projectColors';
 import { formatWhenDisplay, formatDeadlineCountdown, getDeadlineUrgency, formatDateForDisplay, getToday } from '../utils/dates';
-import { openInEditor, editorLabel } from '../utils/openInEditor';
+import { openEntityFile, openLabel } from '../utils/pathOpener';
+import { buildOpenMenuItems } from '../utils/openMenuItems';
+import { ContextMenu } from './ContextMenu';
 import { WikilinkRenderer } from './WikilinkRenderer';
 import { useSubtaskAdder, SubtaskInputRow, SubtaskToolbarButton } from './SubtaskAdder';
 import { WhenButton } from './WhenDatePicker';
@@ -29,7 +31,7 @@ interface TaskItemProps {
 
 export const TaskItem = memo(function TaskItem({ task, showProject = true }: TaskItemProps) {
   const { selectedTaskIds, toggleTaskSelection, expandedTaskId, expandTask, setSelectedPerson, setSelectedProject, setSelectedTag, currentView } = usePanelState();
-  const { toggleTaskComplete, updateTask, availableProjects, availablePeople, vaultPath, projectColors, tagColors, openWhenPicker, openDeadlinePicker, isObsidianVault, editorType, editorCustomCommand } = useTaskStore(useShallow((s) => ({
+  const { toggleTaskComplete, updateTask, availableProjects, availablePeople, vaultPath, projectColors, tagColors, openWhenPicker, openDeadlinePicker, isObsidianVault, pathOpeners } = useTaskStore(useShallow((s) => ({
     toggleTaskComplete: s.toggleTaskComplete,
     updateTask: s.updateTask,
     availableProjects: s.availableProjects,
@@ -40,8 +42,7 @@ export const TaskItem = memo(function TaskItem({ task, showProject = true }: Tas
     openWhenPicker: s.openWhenPicker,
     openDeadlinePicker: s.openDeadlinePicker,
     isObsidianVault: s.isObsidianVault,
-    editorType: s.editorType,
-    editorCustomCommand: s.editorCustomCommand,
+    pathOpeners: s.pathOpeners,
   })));
   // Per-row derived flags: only this row re-renders when its picker opens or it lingers
   const whenPickerForceOpen = useTaskStore((s) => s.taskIdWithOpenWhenPicker === task.id);
@@ -131,6 +132,7 @@ export const TaskItem = memo(function TaskItem({ task, showProject = true }: Tas
   const notesWiki = useWikilinkSuggest(notes, notesCursor);
   const hint = useMemo(() => detectDateHint(title), [title]);
   const [dismissedPhrase, setDismissedPhrase] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   // Reset dismissed state when task changes
   useEffect(() => { setDismissedPhrase(null); }, [task.id]);
   const {
@@ -223,6 +225,11 @@ export const TaskItem = memo(function TaskItem({ task, showProject = true }: Tas
     // Double click = expand for editing
     e.stopPropagation();
     expandTask(task.id);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
   const handleCheckboxClick = async (e: React.MouseEvent) => {
@@ -339,6 +346,7 @@ export const TaskItem = memo(function TaskItem({ task, showProject = true }: Tas
       : 'ml-[36px] mr-4 px-4 py-1.5 hover:bg-[#F5F5F5] dark:hover:bg-[#252525] rounded-lg';
 
   return (
+    <>
     <div
       ref={expandedRef}
       className={showExpandedContent
@@ -347,6 +355,7 @@ export const TaskItem = memo(function TaskItem({ task, showProject = true }: Tas
       }
       onClick={!showExpandedContent ? handleClick : undefined}
       onDoubleClick={!showExpandedContent ? handleDoubleClick : undefined}
+      onContextMenu={handleContextMenu}
     >
       {/* Title row — stays in place, becomes card header when expanded */}
       <div
@@ -720,13 +729,13 @@ export const TaskItem = memo(function TaskItem({ task, showProject = true }: Tas
                 <div className="flex items-center gap-3 shrink-0">
                   {vaultPath && (
                     <button
-                      onClick={() => openInEditor(vaultPath, task.filePath, task.lineNumber, isObsidianVault, editorType, editorCustomCommand)}
+                      onClick={() => openEntityFile(task.filePath, pathOpeners).catch(console.error)}
                       className="flex items-center gap-1 text-[11px] text-primary hover:text-[#3F51B5] transition-colors"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                       </svg>
-                      {editorLabel(isObsidianVault, editorType)}
+                      {openLabel(pathOpeners, task.filePath)}
                     </button>
                   )}
                 </div>
@@ -736,5 +745,14 @@ export const TaskItem = memo(function TaskItem({ task, showProject = true }: Tas
         </div>
       </div>
     </div>
+    {contextMenu && (
+      <ContextMenu
+        x={contextMenu.x}
+        y={contextMenu.y}
+        items={buildOpenMenuItems(task.filePath, pathOpeners)}
+        onClose={() => setContextMenu(null)}
+      />
+    )}
+    </>
   );
 });
