@@ -206,8 +206,6 @@ export interface FolderPaths {
   dailyNotesFormat: string;
 }
 
-export type EditorType = 'system' | 'vscode' | 'sublime' | 'custom';
-
 // Calendar types
 export interface CalendarInfo {
   id: string;

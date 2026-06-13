@@ -16,7 +16,9 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useTaskStore } from '../stores/taskStore';
 import { ViewType, getWhenType, ProjectInfo, PersonInfo, SmartList } from '../types/task';
-import { ContextMenu } from './ContextMenu';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu';
+import { buildOpenMenuItems } from '../utils/openMenuItems';
+import type { PathOpenerInfo } from '../utils/pathOpener';
 
 // Heavy modals load on first open — keeps the startup bundle small.
 const SettingsModal = lazy(() => import('./SettingsModal').then((m) => ({ default: m.SettingsModal })));
@@ -124,84 +126,30 @@ interface ProjectHierarchy {
   children: ProjectHierarchy[];  // Changed to recursive structure
 }
 
-function MenuItem({ dot, label, onClick }: { dot: string; label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-[#f5f3f0] dark:hover:bg-[#333] transition-colors duration-[0.1s] cursor-pointer"
-    >
-      <span className="rounded-full flex-shrink-0" style={{ backgroundColor: dot, width: 5, height: 5 }} />
-      <span className="text-[13px] flex-1 text-left text-[#1A1A1A] dark:text-[#E0E0E0]">{label}</span>
-    </button>
-  );
-}
-
-function ProjectContextMenu({ project, color, x, y, onColor, onRename, onAddSubproject, onClose }: {
-  project: ProjectInfo; color: string; x: number; y: number;
+function ProjectContextMenu({ project, color, openers, x, y, onColor, onRename, onAddSubproject, onClose }: {
+  project: ProjectInfo; color: string; openers: PathOpenerInfo[]; x: number; y: number;
   onColor: () => void; onRename: () => void; onAddSubproject: () => void; onClose: () => void;
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<React.CSSProperties>({ top: y, left: x, visibility: 'hidden' });
-
-  useEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const style: React.CSSProperties = {};
-    if (y + el.offsetHeight > window.innerHeight) style.bottom = window.innerHeight - y;
-    else style.top = y;
-    if (x + el.offsetWidth > window.innerWidth) style.right = window.innerWidth - x;
-    else style.left = x;
-    style.visibility = 'visible';
-    setPos(style);
-  }, [x, y]);
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
-      <div ref={menuRef} className="fixed z-50 bg-white dark:bg-[#2A2A2A] min-w-[180px] overflow-hidden"
-        style={{ ...pos, borderRadius: 12, boxShadow: '0 0 0 0.5px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div className="px-3 pt-2.5 pb-1.5 border-b border-[#F0F0F0] dark:border-[#3A3A3A]">
-          <div className="text-[13px] font-semibold text-[#1A1A1A] dark:text-[#E0E0E0] truncate">{project.name}</div>
-        </div>
-        <MenuItem dot={color} label="Color…" onClick={onColor} />
-        <MenuItem dot="#999" label="Rename" onClick={onRename} />
-        <MenuItem dot="#5C6BC0" label="New Subproject" onClick={onAddSubproject} />
-      </div>
-    </>
-  );
+  const items: ContextMenuItem[] = [
+    ...buildOpenMenuItems(project.path, openers),
+    { separator: true },
+    { label: 'Color…', dot: color, onClick: onColor },
+    { label: 'Rename', dot: '#999', onClick: onRename },
+    { label: 'New Subproject', dot: '#5C6BC0', onClick: onAddSubproject },
+  ];
+  return <ContextMenu x={x} y={y} header={project.name} items={items} onClose={onClose} />;
 }
 
-function PersonContextMenu({ person, x, y, onRename, onClose }: {
-  person: PersonInfo; x: number; y: number;
+function PersonContextMenu({ person, openers, x, y, onRename, onClose }: {
+  person: PersonInfo; openers: PathOpenerInfo[]; x: number; y: number;
   onRename: () => void; onClose: () => void;
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<React.CSSProperties>({ top: y, left: x, visibility: 'hidden' });
-
-  useEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const style: React.CSSProperties = {};
-    if (y + el.offsetHeight > window.innerHeight) style.bottom = window.innerHeight - y;
-    else style.top = y;
-    if (x + el.offsetWidth > window.innerWidth) style.right = window.innerWidth - x;
-    else style.left = x;
-    style.visibility = 'visible';
-    setPos(style);
-  }, [x, y]);
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
-      <div ref={menuRef} className="fixed z-50 bg-white dark:bg-[#2A2A2A] min-w-[160px] overflow-hidden"
-        style={{ ...pos, borderRadius: 12, boxShadow: '0 0 0 0.5px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div className="px-3 pt-2.5 pb-1.5 border-b border-[#F0F0F0] dark:border-[#3A3A3A]">
-          <div className="text-[13px] font-semibold text-[#1A1A1A] dark:text-[#E0E0E0] truncate">{person.name}</div>
-        </div>
-        <MenuItem dot="#999" label="Rename" onClick={onRename} />
-      </div>
-    </>
-  );
+  const items: ContextMenuItem[] = [
+    ...buildOpenMenuItems(person.path, openers),
+    { separator: true },
+    { label: 'Rename', dot: '#999', onClick: onRename },
+  ];
+  return <ContextMenu x={x} y={y} header={person.name} items={items} onClose={onClose} />;
 }
 
 // Sortable wrapper for project items
@@ -235,7 +183,7 @@ function SortableProjectItem({
 }
 
 export function Sidebar() {
-  const { currentView, setCurrentView, tasks, selectedProject, setSelectedProject, availableProjects, selectedPerson, setSelectedPerson, availablePeople, recurringTemplates, selectedTag, setSelectedTag, availableTags, sidebarWidth, setSidebarWidth, expandedFolders, toggleFolder, projectColors, setProjectColor, tagColors, setTagColor, projectOrder, reorderProjects, sidebarCounts, showProjectCounts, smartLists, selectedSmartListId, deleteSmartList, setSelectedSmartList, renameProject, renamePerson } = useTaskStore(useShallow((s) => ({ currentView: s.currentView, setCurrentView: s.setCurrentView, tasks: s.tasks, selectedProject: s.selectedProject, setSelectedProject: s.setSelectedProject, availableProjects: s.availableProjects, selectedPerson: s.selectedPerson, setSelectedPerson: s.setSelectedPerson, availablePeople: s.availablePeople, recurringTemplates: s.recurringTemplates, selectedTag: s.selectedTag, setSelectedTag: s.setSelectedTag, availableTags: s.availableTags, sidebarWidth: s.sidebarWidth, setSidebarWidth: s.setSidebarWidth, expandedFolders: s.expandedFolders, toggleFolder: s.toggleFolder, projectColors: s.projectColors, setProjectColor: s.setProjectColor, tagColors: s.tagColors, setTagColor: s.setTagColor, projectOrder: s.projectOrder, reorderProjects: s.reorderProjects, sidebarCounts: s.sidebarCounts, showProjectCounts: s.showProjectCounts, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId, deleteSmartList: s.deleteSmartList, setSelectedSmartList: s.setSelectedSmartList, renameProject: s.renameProject, renamePerson: s.renamePerson, })));
+  const { currentView, setCurrentView, tasks, selectedProject, setSelectedProject, availableProjects, selectedPerson, setSelectedPerson, availablePeople, recurringTemplates, selectedTag, setSelectedTag, availableTags, sidebarWidth, setSidebarWidth, expandedFolders, toggleFolder, projectColors, setProjectColor, tagColors, setTagColor, projectOrder, reorderProjects, sidebarCounts, showProjectCounts, smartLists, selectedSmartListId, deleteSmartList, setSelectedSmartList, renameProject, renamePerson, pathOpeners } = useTaskStore(useShallow((s) => ({ currentView: s.currentView, setCurrentView: s.setCurrentView, tasks: s.tasks, selectedProject: s.selectedProject, setSelectedProject: s.setSelectedProject, availableProjects: s.availableProjects, selectedPerson: s.selectedPerson, setSelectedPerson: s.setSelectedPerson, availablePeople: s.availablePeople, recurringTemplates: s.recurringTemplates, selectedTag: s.selectedTag, setSelectedTag: s.setSelectedTag, availableTags: s.availableTags, sidebarWidth: s.sidebarWidth, setSidebarWidth: s.setSidebarWidth, expandedFolders: s.expandedFolders, toggleFolder: s.toggleFolder, projectColors: s.projectColors, setProjectColor: s.setProjectColor, tagColors: s.tagColors, setTagColor: s.setTagColor, projectOrder: s.projectOrder, reorderProjects: s.reorderProjects, sidebarCounts: s.sidebarCounts, showProjectCounts: s.showProjectCounts, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId, deleteSmartList: s.deleteSmartList, setSelectedSmartList: s.setSelectedSmartList, renameProject: s.renameProject, renamePerson: s.renamePerson, pathOpeners: s.pathOpeners, })));
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [colorPickerProject, setColorPickerProject] = useState<string | null>(null);
   const [colorPickerTag, setColorPickerTag] = useState<string | null>(null);
@@ -869,6 +817,7 @@ export function Sidebar() {
         <ProjectContextMenu
           project={projectContextMenu.project}
           color={getColor(projectContextMenu.project.name, projectContextMenu.project.parentFolder)}
+          openers={pathOpeners}
           x={projectContextMenu.x}
           y={projectContextMenu.y}
           onColor={() => {
@@ -897,6 +846,7 @@ export function Sidebar() {
       {personContextMenu && (
         <PersonContextMenu
           person={personContextMenu.person}
+          openers={pathOpeners}
           x={personContextMenu.x}
           y={personContextMenu.y}
           onRename={() => {

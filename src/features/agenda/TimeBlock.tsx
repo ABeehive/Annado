@@ -9,35 +9,15 @@ import { useDraggable } from '@dnd-kit/core';
 import { DAY_START, DAY_END, PIXELS_PER_MINUTE, BLOCK_GAP_PX } from './constants';
 import { formatTime, formatDuration } from './utils';
 import { WikilinkRenderer } from '../../components/WikilinkRenderer';
+import { ContextMenu, type ContextMenuItem } from '../../components/ContextMenu';
+import { buildOpenMenuItems } from '../../utils/openMenuItems';
+import type { PathOpenerInfo } from '../../utils/pathOpener';
 import { getMeetingUrl } from './meetingUrl';
 
 const MIN_BLOCK_HEIGHT = 26;
 const MIN_DURATION = 15;
 
-function MenuItem({ dot, label, shortcut, red, onClick }: {
-  dot: string;
-  label: string;
-  shortcut?: string;
-  red?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-[#f5f3f0] dark:hover:bg-[#333] transition-colors duration-[0.1s] cursor-pointer"
-    >
-      <span className="rounded-full flex-shrink-0" style={{ backgroundColor: dot, width: 5, height: 5 }} />
-      <span className={`text-[13px] flex-1 text-left ${red ? 'text-[#D04040] dark:text-[#E07070]' : 'text-[#1A1A1A] dark:text-[#E0E0E0]'}`}>
-        {label}
-      </span>
-      {shortcut && (
-        <span className="text-[11px] text-[#BBB] dark:text-[#666] ml-2">{shortcut}</span>
-      )}
-    </button>
-  );
-}
-
-function BlockContextMenu({ block, clickX, clickY, isTask, isPinned, isEvent, hasBlockingOverride, onRemoveTime, onComplete, onToggleBlocking, onResetBlocking, onCreateTask, onEditEvent, onDelete, onClose }: {
+function BlockContextMenu({ block, clickX, clickY, isTask, isPinned, isEvent, hasBlockingOverride, openers, onRemoveTime, onComplete, onToggleBlocking, onResetBlocking, onCreateTask, onEditEvent, onDelete, onClose }: {
   block: AgendaBlock;
   clickX: number;
   clickY: number;
@@ -45,6 +25,7 @@ function BlockContextMenu({ block, clickX, clickY, isTask, isPinned, isEvent, ha
   isPinned: boolean;
   isEvent: boolean;
   hasBlockingOverride: boolean;
+  openers: PathOpenerInfo[];
   onRemoveTime: () => void;
   onComplete: () => void;
   onToggleBlocking: () => void;
@@ -54,29 +35,6 @@ function BlockContextMenu({ block, clickX, clickY, isTask, isPinned, isEvent, ha
   onDelete: () => void;
   onClose: () => void;
 }) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<React.CSSProperties>({ top: clickY, left: clickX, visibility: 'hidden' });
-
-  useEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const menuWidth = el.offsetWidth;
-    const menuHeight = el.offsetHeight;
-    const style: React.CSSProperties = {};
-    if (clickY + menuHeight > window.innerHeight) {
-      style.bottom = window.innerHeight - clickY;
-    } else {
-      style.top = clickY;
-    }
-    if (clickX + menuWidth > window.innerWidth) {
-      style.right = window.innerWidth - clickX;
-    } else {
-      style.left = clickX;
-    }
-    style.visibility = 'visible';
-    setPosition(style);
-  }, [clickX, clickY]);
-
   useEffect(() => {
     if (!isEvent) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -95,58 +53,24 @@ function BlockContextMenu({ block, clickX, clickY, isTask, isPinned, isEvent, ha
     ? `${formatTime(block.startMinutes)} – ${formatTime(block.endMinutes)} · ${block.event?.calendarName || ''}`
     : `${formatTime(block.startMinutes)} · ${formatDuration(block.endMinutes - block.startMinutes)}`;
 
-  return (
-    <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
-      <div
-        ref={menuRef}
-        className="fixed z-50 bg-white dark:bg-[#2A2A2A] min-w-[200px] overflow-hidden"
-        style={{ ...position, borderRadius: 12, boxShadow: '0 0 0 0.5px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)' }}
-      >
-        {/* Header */}
-        <div className="px-3 pt-2.5 pb-1.5">
-          <div className="text-[13px] font-semibold text-[#1A1A1A] dark:text-[#E0E0E0] truncate">{title}</div>
-          <div className="text-[11px] text-[#888] truncate mt-0.5">{subtitle}</div>
-        </div>
+  const items: ContextMenuItem[] = [];
+  if (isTask) {
+    if (block.task?.filePath) {
+      items.push(...buildOpenMenuItems(block.task.filePath, openers), { separator: true });
+    }
+    if (isPinned) items.push({ label: 'Remove time', dot: '#999', onClick: onRemoveTime });
+    items.push({ label: block.task?.completed ? 'Mark incomplete' : 'Complete task', dot: '#999', onClick: onComplete });
+  }
+  if (isEvent) {
+    items.push({ label: 'Create task', dot: '#5C6BC0', shortcut: '⌘T', onClick: onCreateTask });
+    items.push({ label: block.isBlocking ? 'Mark non-blocking' : 'Mark blocking', dot: '#999', shortcut: '⌘B', onClick: onToggleBlocking });
+    if (hasBlockingOverride) items.push({ label: 'Reset to calendar default', dot: '#999', onClick: onResetBlocking });
+    items.push({ separator: true });
+    items.push({ label: 'Edit event', dot: '#999', shortcut: '⌘E', onClick: onEditEvent });
+    items.push({ label: 'Delete', dot: '#E53935', shortcut: 'Del', destructive: true, onClick: onDelete });
+  }
 
-        {/* Separator */}
-        <div className="border-t border-[#F0F0F0] dark:border-[#3A3A3A]" />
-
-        {/* Task-specific menu items */}
-        {isTask && (
-          <>
-            {isPinned && (
-              <MenuItem dot="#999" label="Remove time" onClick={onRemoveTime} />
-            )}
-            <MenuItem
-              dot="#999"
-              label={block.task?.completed ? 'Mark incomplete' : 'Complete task'}
-              onClick={onComplete}
-            />
-          </>
-        )}
-
-        {/* Event-specific menu items */}
-        {isEvent && (
-          <>
-            <MenuItem dot="#5C6BC0" label="Create task" shortcut="⌘T" onClick={onCreateTask} />
-            <MenuItem
-              dot="#999"
-              label={block.isBlocking ? 'Mark non-blocking' : 'Mark blocking'}
-              shortcut="⌘B"
-              onClick={onToggleBlocking}
-            />
-            {hasBlockingOverride && (
-              <MenuItem dot="#999" label="Reset to calendar default" onClick={onResetBlocking} />
-            )}
-            <div className="border-t border-[#f0eeeb] dark:border-[#3A3A3A]" />
-            <MenuItem dot="#999" label="Edit event" shortcut="⌘E" onClick={onEditEvent} />
-            <MenuItem dot="#E53935" label="Delete" shortcut="Del" red onClick={onDelete} />
-          </>
-        )}
-      </div>
-    </>
-  );
+  return <ContextMenu x={clickX} y={clickY} header={title} subheader={subtitle} items={items} onClose={onClose} />;
 }
 
 interface TimeBlockProps {
@@ -165,6 +89,7 @@ export function TimeBlock({ block, columnOffset = 0, columnWidth = '100%', overl
     availableProjects, projectColors,
     navigateToPerson, navigateToProject,
     setEventBlockingOverride, clearEventBlockingOverride, eventBlockingOverrides,
+    pathOpeners,
   } = useTaskStore();
   const { personNames, projectNames } = useAgendaNames();
   const [showMenu, setShowMenu] = useState<{ x: number; y: number } | null>(null);
@@ -476,6 +401,7 @@ export function TimeBlock({ block, columnOffset = 0, columnWidth = '100%', overl
           isPinned={isPinned}
           isEvent={isEvent}
           hasBlockingOverride={hasBlockingOverride}
+          openers={pathOpeners}
           onRemoveTime={handleRemoveTime}
           onComplete={handleComplete}
           onToggleBlocking={handleToggleBlocking}

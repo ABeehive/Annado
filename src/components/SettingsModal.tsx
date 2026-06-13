@@ -51,7 +51,7 @@ type SettingsTab = 'general' | 'calendar' | 'shortcuts' | 'notifications' | 'abo
 
 
 export function SettingsModal({ isOpen, onClose }: SettingsProps) {
-  const { vaultPath, setVaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, calendarEnabled, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault, editorType, editorCustomCommand, setEditorConfig } = useTaskStore();
+  const { vaultPath, setVaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, calendarEnabled, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault } = useTaskStore();
   const [isChangingVault, setIsChangingVault] = useState(false);
   const [localFolderPaths, setLocalFolderPaths] = useState(folderPaths);
   const [isSavingFolderPaths, setIsSavingFolderPaths] = useState(false);
@@ -219,44 +219,6 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
                   <Toggle checked={isObsidianVault} onChange={setIsObsidianVault} />
                 </div>
               </div>
-
-              {/* External Editor Section — only shown when not an Obsidian vault */}
-              {!isObsidianVault && (
-                <div>
-                  <h3 className="text-[10px] font-semibold text-[#B0B0B0] dark:text-[#555] uppercase tracking-wider mb-3">
-                    External Editor
-                  </h3>
-                  <div className="flex items-center bg-[#F5F5F5] dark:bg-[#333] rounded-full p-[3px] mb-3">
-                    {(['system', 'vscode', 'sublime', 'custom'] as const).map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => setEditorConfig(type, editorCustomCommand)}
-                        className={`flex-1 py-1 text-[12px] font-medium rounded-full transition-all ${
-                          editorType === type
-                            ? 'bg-white dark:bg-[#4A4A4A] text-[#1A1A1A] dark:text-[#E8E8E8] shadow-sm'
-                            : 'text-[#999] dark:text-[#777] hover:text-[#666] dark:hover:text-[#AAA]'
-                        }`}
-                      >
-                        {{ system: 'System', vscode: 'VS Code', sublime: 'Sublime', custom: 'Custom' }[type]}
-                      </button>
-                    ))}
-                  </div>
-                  {editorType === 'custom' && (
-                    <div>
-                      <input
-                        type="text"
-                        value={editorCustomCommand}
-                        onChange={e => setEditorConfig('custom', e.target.value)}
-                        placeholder="e.g. code --goto {file}:{line}"
-                        className="w-full px-3 py-2 text-[13px] rounded-lg border border-[#E0E0E0] dark:border-[#3A3A3A] bg-white dark:bg-[#2A2A2A] text-[#1A1A1A] dark:text-[#E0E0E0] focus:outline-none focus:border-primary"
-                      />
-                      <p className="text-[11px] text-[#B0B0B0] dark:text-[#555] mt-1">
-                        Use <code className="bg-[#F0F0F0] dark:bg-[#333] px-1 rounded">{'{file}'}</code> for the absolute path and <code className="bg-[#F0F0F0] dark:bg-[#333] px-1 rounded">{'{line}'}</code> for the line number.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Appearance Section */}
               <div>

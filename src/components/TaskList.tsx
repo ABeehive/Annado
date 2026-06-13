@@ -9,7 +9,9 @@ import { TaskItem } from './TaskItem';
 import { BulkActions } from './BulkActions';
 import { ViewType, Task, ProjectMetadata, PersonMetadata, RecurringTemplate, CalendarEvent, Milestone } from '../types/task';
 import { getProjectColor, getTagColor } from '../utils/projectColors';
-import { openInEditor, editorLabel } from '../utils/openInEditor';
+import { openEntityFile, openLabel } from '../utils/pathOpener';
+import { buildOpenMenuItems } from '../utils/openMenuItems';
+import { ContextMenu } from './ContextMenu';
 import { viewIcons, PersonIcon, TagIcon } from '../utils/viewIcons';
 import { formatDateForDisplay, getDateGroup, formatDeadlineShort, getDeadlineUrgency, DEADLINE_URGENCY_COLORS, formatDeadlineCountdown, parseLocalDate, getToday, getDaySections, DaySection, formatDateForStorage } from '../utils/dates';
 import { WikilinkRenderer } from './WikilinkRenderer';
@@ -369,8 +371,9 @@ function RecurringTemplateItem({
   template: RecurringTemplate;
   onClick: () => void;
 }) {
-  const { availableProjects, availablePeople, projectColors } = useTaskStore(useShallow((s) => ({ availableProjects: s.availableProjects, availablePeople: s.availablePeople, projectColors: s.projectColors, })));
+  const { availableProjects, availablePeople, projectColors, pathOpeners } = useTaskStore(useShallow((s) => ({ availableProjects: s.availableProjects, availablePeople: s.availablePeople, projectColors: s.projectColors, pathOpeners: s.pathOpeners, })));
   const { setSelectedProject, setSelectedPerson } = usePanelState();
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const personNames = useMemo(() => new Set(availablePeople.map(p => p.name)), [availablePeople]);
   const projectNames = useMemo(() => new Set(availableProjects.map(p => p.name)), [availableProjects]);
 
@@ -389,8 +392,10 @@ function RecurringTemplateItem({
   };
 
   return (
+    <>
     <div
       onClick={onClick}
+      onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY }); }}
       className="group flex items-center gap-4 cursor-pointer ml-[36px] mr-4 px-4 py-3 hover:bg-[#F5F5F5] dark:hover:bg-[#252525] rounded-lg transition-all"
     >
       {/* Recurring icon */}
@@ -442,6 +447,15 @@ function RecurringTemplateItem({
         )}
       </div>
     </div>
+    {contextMenu && (
+      <ContextMenu
+        x={contextMenu.x}
+        y={contextMenu.y}
+        items={buildOpenMenuItems(template.filePath, pathOpeners)}
+        onClose={() => setContextMenu(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -783,7 +797,7 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
     getFilteredTasks,
     setSelectedProject,
   } = usePanelState();
-  const { selectedPersonMetadata, isLoading, vaultPath, availableProjects, availablePeople, projectColors, tagColors, updateProjectMetadata, recurringTemplates, sidePanelOpen, toggleSidePanel, calendarEnabled, calendarEvents, smartLists, selectedSmartListId, isObsidianVault, editorType, editorCustomCommand } = useTaskStore(useShallow((s) => ({ selectedPersonMetadata: s.selectedPersonMetadata, isLoading: s.isLoading, vaultPath: s.vaultPath, availableProjects: s.availableProjects, availablePeople: s.availablePeople, projectColors: s.projectColors, tagColors: s.tagColors, updateProjectMetadata: s.updateProjectMetadata, recurringTemplates: s.recurringTemplates, sidePanelOpen: s.sidePanelOpen, toggleSidePanel: s.toggleSidePanel, calendarEnabled: s.calendarEnabled, calendarEvents: s.calendarEvents, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId, isObsidianVault: s.isObsidianVault, editorType: s.editorType, editorCustomCommand: s.editorCustomCommand, })));
+  const { selectedPersonMetadata, isLoading, vaultPath, availableProjects, availablePeople, projectColors, tagColors, updateProjectMetadata, recurringTemplates, sidePanelOpen, toggleSidePanel, calendarEnabled, calendarEvents, smartLists, selectedSmartListId, pathOpeners } = useTaskStore(useShallow((s) => ({ selectedPersonMetadata: s.selectedPersonMetadata, isLoading: s.isLoading, vaultPath: s.vaultPath, availableProjects: s.availableProjects, availablePeople: s.availablePeople, projectColors: s.projectColors, tagColors: s.tagColors, updateProjectMetadata: s.updateProjectMetadata, recurringTemplates: s.recurringTemplates, sidePanelOpen: s.sidePanelOpen, toggleSidePanel: s.toggleSidePanel, calendarEnabled: s.calendarEnabled, calendarEvents: s.calendarEvents, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId, pathOpeners: s.pathOpeners, })));
   const tasks = getFilteredTasks();
 
   // Logbook renders incrementally (large histories); reset when leaving the view
@@ -1042,9 +1056,9 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
 
             return targetPath && vaultPath ? (
               <button
-                onClick={() => openInEditor(vaultPath, targetPath, 1, isObsidianVault, editorType, editorCustomCommand)}
+                onClick={() => openEntityFile(targetPath, pathOpeners).catch(console.error)}
                 className="text-[26px] font-medium text-[#1A1A1A] dark:text-[#E8E8E8] hover:underline text-left"
-                title={editorLabel(isObsidianVault, editorType)}
+                title={openLabel(pathOpeners, targetPath)}
               >
                 {title}
               </button>

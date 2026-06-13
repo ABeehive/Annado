@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { useTaskStore } from '../stores/taskStore';
 import { ChecklistItemRow } from './ChecklistItemRow';
 import { WhenType, createWhenValue, getWhenType } from '../types/task';
-import { openInEditor, editorLabel } from '../utils/openInEditor';
+import { openEntityFile, openLabel } from '../utils/pathOpener';
 
 export function TaskDetail() {
-  const { getSelectedTask, updateTask, selectTask, availableProjects, selectedTaskIds, vaultPath, isObsidianVault, editorType, editorCustomCommand } = useTaskStore();
+  const { getSelectedTask, updateTask, selectTask, availableProjects, selectedTaskIds, vaultPath, pathOpeners } = useTaskStore();
   const task = getSelectedTask();
 
   const [title, setTitle] = useState('');
@@ -145,9 +145,9 @@ export function TaskDetail() {
             if (!projectInfo) return null;
             return (
               <button
-                onClick={() => openInEditor(vaultPath, projectInfo.path, 1, isObsidianVault, editorType, editorCustomCommand)}
+                onClick={() => openEntityFile(projectInfo.path, pathOpeners).catch(console.error)}
                 className="p-1 text-primary hover:text-[#3F51B5] transition-colors"
-                title={editorLabel(isObsidianVault, editorType)}
+                title={openLabel(pathOpeners, projectInfo.path)}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -199,13 +199,13 @@ export function TaskDetail() {
         <div className="pt-3 mt-auto border-t border-[#E8E8E8] dark:border-[#2A2A2A] space-y-2">
           {vaultPath && (
             <button
-              onClick={() => openInEditor(vaultPath, task.filePath, task.lineNumber, isObsidianVault, editorType, editorCustomCommand)}
+              onClick={() => openEntityFile(task.filePath, pathOpeners).catch(console.error)}
               className="flex items-center gap-1.5 text-[11px] text-primary hover:text-[#3F51B5] transition-colors"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
-              {editorLabel(isObsidianVault, editorType)}
+              {openLabel(pathOpeners, task.filePath)}
             </button>
           )}
         </div>

@@ -2,7 +2,8 @@ import { invoke } from '@tauri-apps/api/core';
 import type { SliceCreator } from './types';
 import { persist, storeError } from '../storeUtils';
 import { KEYBINDING_DEFAULTS } from '../../utils/keybindings';
-import type { FolderPaths, EditorType, Task, SmartList } from '../../types/task';
+import { detectOpeners, refreshOpeners, type PathOpenerInfo } from '../../utils/pathOpener';
+import type { FolderPaths, Task, SmartList } from '../../types/task';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -56,8 +57,8 @@ export interface SettingsSlice {
   isLoading: boolean;
   error: string | null;
   isObsidianVault: boolean;
-  editorType: EditorType;
-  editorCustomCommand: string;
+  /** Apps detected on this machine that can open files/dirs (for "Open with…" menus). */
+  pathOpeners: PathOpenerInfo[];
   folderPaths: FolderPaths;
   excludedPaths: string[];
   theme: ThemePreference;
@@ -72,8 +73,8 @@ export interface SettingsSlice {
   setFolderPaths: (folderPaths: FolderPaths) => Promise<void>;
   fetchIsObsidianVault: () => Promise<void>;
   setIsObsidianVault: (value: boolean) => Promise<void>;
-  fetchEditorConfig: () => Promise<void>;
-  setEditorConfig: (editorType: EditorType, customCommand: string) => Promise<void>;
+  loadPathOpeners: () => Promise<void>;
+  refreshPathOpeners: () => Promise<void>;
   fetchExcludedPaths: () => Promise<void>;
   addExcludedPath: (path: string) => Promise<void>;
   removeExcludedPath: (path: string) => Promise<void>;
@@ -89,8 +90,7 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
   isLoading: false,
   error: null,
   isObsidianVault: false,
-  editorType: 'system' as EditorType,
-  editorCustomCommand: '',
+  pathOpeners: [],
   folderPaths: DEFAULT_FOLDER_PATHS,
   excludedPaths: [],
   theme: persisted.theme,
@@ -114,7 +114,7 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
       get().fetchFolderPaths();
       get().fetchExcludedPaths();
       get().fetchIsObsidianVault();
-      get().fetchEditorConfig();
+      get().loadPathOpeners();
     } catch (error) {
       storeError(set, error, { isLoading: false });
     }
@@ -174,22 +174,19 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
     }
   },
 
-  fetchEditorConfig: async () => {
-    const v = _vaultVersion;
+  loadPathOpeners: async () => {
     try {
-      const config = await invoke<{ editorType: string; editorCustomCommand: string }>('get_editor_config');
-      if (_vaultVersion !== v) return;
-      set({ editorType: config.editorType as EditorType, editorCustomCommand: config.editorCustomCommand });
+      const pathOpeners = await detectOpeners();
+      set({ pathOpeners });
     } catch (error) {
-      if (_vaultVersion !== v) return;
-      set({ error: String(error) });
+      console.error('Failed to detect path openers:', error);
     }
   },
 
-  setEditorConfig: async (editorType: EditorType, customCommand: string) => {
+  refreshPathOpeners: async () => {
     try {
-      await invoke('set_editor_config', { editorType, editorCustomCommand: customCommand });
-      set({ editorType, editorCustomCommand: customCommand });
+      const pathOpeners = await refreshOpeners();
+      set({ pathOpeners });
     } catch (error) {
       storeError(set, error);
     }
