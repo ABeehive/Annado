@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, memo } fr
 import { useShallow } from 'zustand/react/shallow';
 import { Task, getWhenType, WhenValue } from '../types/task';
 import { useTaskStore } from '../stores/taskStore';
-import { usePanelState } from '../hooks/usePanelState';
+import { usePanelState, usePanelTaskState } from '../hooks/usePanelState';
 import { PRIORITY_CONFIG } from '../utils/projectColors';
 import { formatWhenDisplay, formatDeadlineCountdown, getDeadlineUrgency, formatDateForDisplay, getToday } from '../utils/dates';
 import { openInEditor, editorLabel } from '../utils/openInEditor';
@@ -27,7 +27,10 @@ interface TaskItemProps {
 
 
 export const TaskItem = memo(function TaskItem({ task, showProject = true }: TaskItemProps) {
-  const { selectedTaskIds, toggleTaskSelection, expandedTaskId, expandTask, setSelectedPerson, setSelectedProject, setSelectedTag, currentView } = usePanelState();
+  const { toggleTaskSelection, expandTask, setSelectedPerson, setSelectedProject, setSelectedTag, currentView } = usePanelState();
+  // Selection/expansion are read per-row so selecting or expanding one task
+  // re-renders only the affected rows, not the whole list.
+  const { isSelected, isSoleSelection, isExpanded } = usePanelTaskState(task.id);
   const { toggleTaskComplete, updateTask, availableProjects, availablePeople, vaultPath, projectColors, tagColors, openWhenPicker, openDeadlinePicker, isObsidianVault, editorType, editorCustomCommand } = useTaskStore(useShallow((s) => ({
     toggleTaskComplete: s.toggleTaskComplete,
     updateTask: s.updateTask,
@@ -68,8 +71,6 @@ export const TaskItem = memo(function TaskItem({ task, showProject = true }: Tas
     isObsidianVault,
   }), [personNames, projectNames, setSelectedPerson, setSelectedProject, projectColors, availableProjects, isObsidianVault, task.id, task.title, updateTask]);
 
-  const isSelected = selectedTaskIds.includes(task.id);
-  const isExpanded = expandedTaskId === task.id;
   const whenType = getWhenType(task.when);
 
   // Track collapse animation
@@ -123,7 +124,8 @@ export const TaskItem = memo(function TaskItem({ task, showProject = true }: Tas
 
   // Keep the selected row visible during keyboard navigation (↑/↓, ctrl+j/k).
   // block:'nearest' makes this a no-op for click-selection (already in view).
-  const isSoleSelection = isSelected && selectedTaskIds.length === 1;
+  // isSoleSelection comes from usePanelTaskState (true only for the single
+  // selected row), so unrelated selection changes don't re-render every row.
   useLayoutEffect(() => {
     if (isSoleSelection && expandedRef.current) {
       expandedRef.current.scrollIntoView({ block: 'nearest' });
