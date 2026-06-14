@@ -31,7 +31,7 @@ render.
 |----|--------|-----|--------|
 | 1 | `list-performance-primitive-selectors` | Per-row primitive selectors — kill the re-render storm | ✅ |
 | 2 | `list-performance-memoization` | Memoize filtered/grouped tasks | ✅ |
-| 3 | `list-performance-split-expanded-row` | Split collapsed row from expanded editor (+ hoist shared Sets) | planned |
+| 3 | `list-performance-split-expanded-row` | Split collapsed row from expanded editor (+ hoist shared Sets) | ✅ |
 | 4 | `list-performance-virtualize` | Virtualize with `@tanstack/react-virtual` | planned |
 
 ### PR1 — primitive selectors (this branch)
@@ -55,6 +55,32 @@ inputs, and `dayTasks` / `eveningTasks` / `groupedTasks` / `eveningGrouped` /
 satisfy the rules of hooks. Referentially-stable grouped arrays also set up the
 later virtualization work. (Shared-`Set` hoisting moved to PR3, which restructures
 the row internals anyway.)
+
+### PR3 — split collapsed row from expanded editor
+
+A *collapsed* `TaskItem` previously ran ~20 hooks — two `useWikilinkSuggest()`
+calls, `detectDateHint()`, the title/notes/subtask editing state, and several
+effects — none needed until expanded. Now:
+
+- `TaskItem` is a thin wrapper that reads this row's selection/expansion state
+  and drives the collapse animation, then renders either `CollapsedTaskRow` (no
+  editing hooks) or `ExpandedTaskCard`.
+- `ExpandedTaskCard` (new) owns the entire editing experience — title/notes
+  state, wikilink suggestions, date-hint detection, subtask adder, pickers, save
+  and click-outside — and is mounted only while a row is expanded (one at a
+  time).
+- Person/project name `Set`s are built once per list and shared via
+  `WikilinkNamesContext`, instead of being rebuilt per row.
+
+Because the detail wrapper now mounts on expand (rather than always being
+present), `ExpandedTaskCard` animates open by rendering at `0fr` and flipping to
+`1fr` on the next animation frame; `TaskItem` keeps it mounted ~200ms during
+collapse so the close animation still plays.
+
+**Manual test checklist** (no automated UI tests cover this):
+expand/collapse animation, title autofocus on expand, click-outside saves &
+collapses, ⌘S/⌘D open the When/Deadline pickers, Enter collapses, keyboard nav
+keeps the selected row in view, and the check-off linger animation.
 
 ## How to measure
 

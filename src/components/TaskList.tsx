@@ -6,6 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useTaskStore } from '../stores/taskStore';
 import { getTaskDate, limitGroupedTasks, groupTasksByCompletionDate, groupTasksByProject } from '../utils/taskGrouping';
 import { usePanelState, usePanelTaskState } from '../hooks/usePanelState';
+import { WikilinkNamesProvider } from '../contexts/WikilinkNamesContext';
 import { usePanelId } from '../contexts/PanelContext';
 import { TaskItem } from './TaskItem';
 import { BulkActions } from './BulkActions';
@@ -1005,6 +1006,13 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
   );
   const logbookHasMore = logbookGroups !== null && tasks.length > logbookLimit;
 
+  // Person/project name Sets for wikilink rendering — built once here and shared
+  // with every row via context so each row doesn't rebuild its own Sets.
+  const wikilinkNames = useMemo(() => ({
+    personNames: new Set(availablePeople.map((p) => p.name)),
+    projectNames: new Set(availableProjects.map((p) => p.name)),
+  }), [availablePeople, availableProjects]);
+
   // Local state for editing metadata
   const [editingDescription, setEditingDescription] = useState(false);
   const [localDescription, setLocalDescription] = useState('');
@@ -1094,6 +1102,7 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
   const personIcon = <PersonIcon className="w-4 h-4" />;
 
   return (
+    <WikilinkNamesProvider value={wikilinkNames}>
     <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[#FEFEFE] dark:bg-[#1A1A1A] relative">
       {/* Traffic light padding + Header with icon — hidden in side panel (has its own header) */}
       <div className={panelId === 'main' ? 'pl-[52px] pr-8 pt-12 pb-4 titlebar-drag' : 'hidden'}>
@@ -1516,5 +1525,6 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
       {/* Bulk actions toolbar (multi-selection) */}
       <BulkActions />
     </div>
+    </WikilinkNamesProvider>
   );
 }
