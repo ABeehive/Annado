@@ -1,4 +1,5 @@
 import type { TagInfo } from '../types/task';
+import { sameTag } from './tags';
 
 // Shared color palette for projects, tags, and the app accent setting
 export const PROJECT_COLORS = [
@@ -74,7 +75,9 @@ export function getTagColor(
   tagName: string,
   tagColors: Record<string, string>
 ): string {
-  return tagColors[tagName] || '#5C6BC0';
+  // Tag colors are keyed by lowercase name (case-insensitive identity); fall back
+  // to the exact key so colors set before this change still resolve.
+  return tagColors[tagName.toLowerCase()] || tagColors[tagName] || '#5C6BC0';
 }
 
 export function filterTagSuggestions(
@@ -84,5 +87,5 @@ export function filterTagSuggestions(
 ): TagInfo[] {
   if (!input.trim()) return [];
   const q = input.toLowerCase().replace(/^#/, '');
-  return all.filter(t => t.name.toLowerCase().startsWith(q) && !selected.includes(t.name)).slice(0, 6);
+  return all.filter(t => t.name.toLowerCase().includes(q) && !selected.some(s => sameTag(s, t.name))).slice(0, 6);
 }

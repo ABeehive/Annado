@@ -364,18 +364,33 @@ pub struct TagInfo {
 pub fn get_all_tags() -> Result<Vec<TagInfo>, String> {
     with_vault(|vault| {
         let tasks = vault.get_tasks();
-        let mut tag_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        // Tags are case-insensitive for identity (like Obsidian): group case
+        // variants under a lowercase key, summing their counts, while tracking how
+        // often each exact casing was seen so we can pick a canonical display.
+        let mut groups: std::collections::HashMap<String, (usize, std::collections::HashMap<String, usize>)> =
+            std::collections::HashMap::new();
         for task in &tasks {
             if task.completed {
                 continue;
             }
             for tag in &task.tags {
-                *tag_counts.entry(tag.clone()).or_insert(0) += 1;
+                let entry = groups.entry(tag.to_lowercase()).or_insert((0, std::collections::HashMap::new()));
+                entry.0 += 1;
+                *entry.1.entry(tag.clone()).or_insert(0) += 1;
             }
         }
-        let mut tags: Vec<TagInfo> = tag_counts
+        let mut tags: Vec<TagInfo> = groups
             .into_iter()
-            .map(|(name, count)| TagInfo { name, count })
+            .map(|(_key, (count, casings))| {
+                // Canonical casing = most frequently used variant, tie-broken by the
+                // lexicographically smallest string (deterministic).
+                let name = casings
+                    .into_iter()
+                    .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
+                    .map(|(name, _)| name)
+                    .unwrap_or_default();
+                TagInfo { name, count }
+            })
             .collect();
         tags.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
         tags

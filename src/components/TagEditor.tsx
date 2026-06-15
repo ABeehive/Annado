@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTaskStore } from '../stores/taskStore';
 import { getTagColor, filterTagSuggestions } from '../utils/projectColors';
+import { tagsInclude, resolveTagToAdd } from '../utils/tags';
 import { TagSuggestions } from './TagSuggestions';
 
 // Tag editor with add/remove support and autocomplete in expanded view
@@ -33,19 +34,15 @@ export function TagEditor({
   const suggestions = filterTagSuggestions(newTag, availableTags, tags);
 
   const selectSuggestion = (name: string) => {
-    if (!tags.includes(name)) onTagsChange([...tags, name]);
+    if (!tagsInclude(tags, name)) onTagsChange([...tags, name]);
     setNewTag('');
     setIsAdding(false);
   };
 
   const addTag = () => {
-    if (highlightedIndex >= 0 && suggestions[highlightedIndex]) {
-      selectSuggestion(suggestions[highlightedIndex].name);
-      return;
-    }
-    const trimmed = newTag.trim().replace(/^#/, '');
-    if (trimmed && !tags.includes(trimmed)) {
-      onTagsChange([...tags, trimmed]);
+    const name = resolveTagToAdd(newTag, suggestions, highlightedIndex, availableTags);
+    if (name && !tagsInclude(tags, name)) {
+      onTagsChange([...tags, name]);
     }
     setNewTag('');
     setIsAdding(false);
@@ -72,7 +69,7 @@ export function TagEditor({
               }}
               className="hover:underline"
             >
-              {tag}
+              #{tag}
             </button>
             <button
               onClick={(e) => {
@@ -112,6 +109,7 @@ export function TagEditor({
             highlightedIndex={highlightedIndex}
             onSelect={selectSuggestion}
             tagColors={tagColors || {}}
+            anchorRef={inputRef}
           />
         </div>
       ) : (

@@ -1,5 +1,6 @@
 import { Task, ViewType, getWhenType, SmartListFilter } from '../types/task';
 import { isDateTodayOrEarlier, isDateUpcoming, getToday, formatDateForStorage, parseLocalDate, diffDays } from '../utils/dates';
+import { tagsInclude } from '../utils/tags';
 
 export function filterTasks(
   tasks: Task[],
@@ -26,7 +27,7 @@ export function filterTasks(
 
   if (tag) {
     return tasks
-      .filter((task) => task.tags.includes(tag) && !task.completed)
+      .filter((task) => tagsInclude(task.tags, tag) && !task.completed)
       .sort((a, b) => getDateSortKey(a) - getDateSortKey(b));
   }
 
@@ -120,7 +121,7 @@ export function filterTasksForSmartList(
   if (filter.person)
     base = base.filter((t) => t.persons.includes(filter.person!));
   if (filter.tag)
-    base = base.filter((t) => t.tags.includes(filter.tag!));
+    base = base.filter((t) => tagsInclude(t.tags, filter.tag!));
   if (filter.dueWithin) {
     const { amount, unit } = filter.dueWithin;
     const cutoff = parseLocalDate(todayStr);

@@ -24,6 +24,7 @@ const SmartListModal = lazy(() => import('./SmartListModal').then((m) => ({ defa
 import { CreateProjectModal } from './CreateProjectModal';
 import { CreatePersonModal } from './CreatePersonModal';
 import { getProjectColor, getTagColor, PROJECT_COLORS } from '../utils/projectColors';
+import { sameTag } from '../utils/tags';
 import { getViewIcon, PersonIcon } from '../utils/viewIcons';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { isDateTodayOrEarlier, isDateUpcoming } from '../utils/dates';
@@ -674,7 +675,7 @@ export function Sidebar() {
               {isTagsExpanded && (
                 <ul className="space-y-0.5">
                   {availableTags.map((tag) => {
-                    const isActive = selectedTag === tag.name;
+                    const isActive = selectedTag != null && sameTag(selectedTag, tag.name);
                     const tagColor = getTagColor(tag.name, tagColors);
                     return (
                       <li key={tag.name} className="relative">

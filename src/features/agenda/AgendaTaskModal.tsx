@@ -3,6 +3,7 @@ import { useFocusWhen } from '../../hooks/useFocus';
 import { useTaskStore } from '../../stores/taskStore';
 import { WhenValue } from '../../types/task';
 import { getTagColor, filterTagSuggestions } from '../../utils/projectColors';
+import { tagsInclude, resolveTagToAdd } from '../../utils/tags';
 import { TagIcon } from '../../utils/viewIcons';
 import { TagSuggestions } from '../../components/TagSuggestions';
 import { modalShadow } from '../../utils/styles';
@@ -40,6 +41,7 @@ export function AgendaTaskModal({ taskId, onClose }: AgendaTaskModalProps) {
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const notesInputRef = useRef<HTMLTextAreaElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
   const {
     isAddingSubtask, subtaskDraft, setSubtaskDraft, subtaskInputRef,
     openSubtaskInput, commit: commitSubtask, closeSubtaskInput, resetSubtaskAdder,
@@ -166,11 +168,12 @@ export function AgendaTaskModal({ taskId, onClose }: AgendaTaskModalProps) {
   };
 
   const addTag = () => {
-    const trimmed = tagInput.trim().replace(/^#/, '');
-    if (trimmed && !tags.includes(trimmed)) {
-      handleTagsChange([...tags, trimmed]);
+    const name = resolveTagToAdd(tagInput, tagSuggestions, tagHighlightedIndex, availableTags);
+    if (name && !tagsInclude(tags, name)) {
+      handleTagsChange([...tags, name]);
     }
     setTagInput('');
+    setTagHighlightedIndex(-1);
   };
 
   return (
@@ -340,6 +343,7 @@ export function AgendaTaskModal({ taskId, onClose }: AgendaTaskModalProps) {
             })}
             <div className="relative">
               <input
+                ref={tagInputRef}
                 type="text"
                 value={tagInput}
                 onChange={(e) => { setTagInput(e.target.value); setTagHighlightedIndex(-1); }}
@@ -347,20 +351,17 @@ export function AgendaTaskModal({ taskId, onClose }: AgendaTaskModalProps) {
                   if (tagSuggestions.length > 0) {
                     if (e.key === 'ArrowDown') { e.preventDefault(); setTagHighlightedIndex(i => Math.min(i + 1, tagSuggestions.length - 1)); return; }
                     if (e.key === 'ArrowUp') { e.preventDefault(); setTagHighlightedIndex(i => Math.max(i - 1, -1)); return; }
-                    if ((e.key === 'Enter' || e.key === 'Tab') && tagHighlightedIndex >= 0 && tagSuggestions[tagHighlightedIndex]) {
+                  }
+                  if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
+                    const name = resolveTagToAdd(tagInput, tagSuggestions, tagHighlightedIndex, availableTags);
+                    if (name) {
                       e.preventDefault();
-                      const name = tagSuggestions[tagHighlightedIndex].name;
-                      if (!tags.includes(name)) handleTagsChange([...tags, name]);
+                      e.stopPropagation();
+                      if (!tagsInclude(tags, name)) handleTagsChange([...tags, name]);
                       setTagInput('');
                       setTagHighlightedIndex(-1);
-                      return;
                     }
-                  }
-                  if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    addTag();
-                    setTagHighlightedIndex(-1);
+                    return;
                   }
                   if (e.key === 'Backspace' && !tagInput && tags.length > 0) {
                     handleTagsChange(tags.slice(0, -1));
@@ -375,11 +376,12 @@ export function AgendaTaskModal({ taskId, onClose }: AgendaTaskModalProps) {
                 suggestions={tagSuggestions}
                 highlightedIndex={tagHighlightedIndex}
                 onSelect={(name) => {
-                  if (!tags.includes(name)) handleTagsChange([...tags, name]);
+                  if (!tagsInclude(tags, name)) handleTagsChange([...tags, name]);
                   setTagInput('');
                   setTagHighlightedIndex(-1);
                 }}
                 tagColors={tagColors}
+                anchorRef={tagInputRef}
               />
             </div>
           </div>

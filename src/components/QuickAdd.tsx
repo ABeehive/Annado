@@ -3,6 +3,7 @@ import { useFocusWhen } from '../hooks/useFocus';
 import { useTaskStore } from '../stores/taskStore';
 import { WhenValue, ViewType } from '../types/task';
 import { getTagColor, filterTagSuggestions } from '../utils/projectColors';
+import { tagsInclude, resolveTagToAdd } from '../utils/tags';
 import { WhenButton } from './WhenDatePicker';
 import { DeadlineButton } from './DeadlinePicker';
 import { ProjectSelector } from './ProjectSelector';
@@ -308,21 +309,16 @@ export function QuickAdd() {
                     if (tagSuggestions.length > 0) {
                       if (e.key === 'ArrowDown') { e.preventDefault(); setTagHighlightedIndex(i => Math.min(i + 1, tagSuggestions.length - 1)); return; }
                       if (e.key === 'ArrowUp') { e.preventDefault(); setTagHighlightedIndex(i => Math.max(i - 1, -1)); return; }
-                      if ((e.key === 'Enter' || e.key === 'Tab') && tagHighlightedIndex >= 0 && tagSuggestions[tagHighlightedIndex]) {
+                    }
+                    if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
+                      const name = resolveTagToAdd(tagInput, tagSuggestions, tagHighlightedIndex, availableTags);
+                      if (name) {
                         e.preventDefault();
-                        const name = tagSuggestions[tagHighlightedIndex].name;
-                        if (!tags.includes(name)) setTags([...tags, name]);
+                        if (!tagsInclude(tags, name)) setTags([...tags, name]);
                         setTagInput('');
                         setTagHighlightedIndex(-1);
-                        return;
                       }
-                    }
-                    if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
-                      e.preventDefault();
-                      const trimmed = tagInput.trim().replace(/^#/, '');
-                      if (trimmed && !tags.includes(trimmed)) setTags([...tags, trimmed]);
-                      setTagInput('');
-                      setTagHighlightedIndex(-1);
+                      return;
                     }
                     if (e.key === 'Backspace' && !tagInput && tags.length > 0) {
                       setTags(tags.slice(0, -1));
@@ -336,12 +332,13 @@ export function QuickAdd() {
                   suggestions={tagSuggestions}
                   highlightedIndex={tagHighlightedIndex}
                   onSelect={(name) => {
-                    if (!tags.includes(name)) setTags([...tags, name]);
+                    if (!tagsInclude(tags, name)) setTags([...tags, name]);
                     setTagInput('');
                     setTagHighlightedIndex(-1);
                     tagInputRef.current?.focus();
                   }}
                   tagColors={tagColors}
+                  anchorRef={tagInputRef}
                 />
               </div>
             </div>

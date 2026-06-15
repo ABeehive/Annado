@@ -1,18 +1,28 @@
+import { type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { TagInfo } from '../types/task';
 import { getTagColor } from '../utils/projectColors';
+import { usePickerPosition } from '../hooks/usePickerPosition';
 
 interface TagSuggestionsProps {
   suggestions: TagInfo[];
   highlightedIndex: number;
   onSelect: (name: string) => void;
   tagColors: Record<string, string>;
+  anchorRef: RefObject<HTMLElement | null>;
 }
 
-export function TagSuggestions({ suggestions, highlightedIndex, onSelect, tagColors }: TagSuggestionsProps) {
-  if (suggestions.length === 0) return null;
+const TAG_DROPDOWN_WIDTH = 200;
 
-  return (
-    <div className="absolute top-full left-0 mt-1 z-50 min-w-[160px] bg-white dark:bg-[#2A2A2A] rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.12),0_1px_4px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.4)] border border-[#E8E8E8] dark:border-[#3A3A3A] py-1 overflow-hidden">
+export function TagSuggestions({ suggestions, highlightedIndex, onSelect, tagColors, anchorRef }: TagSuggestionsProps) {
+  // Render into document.body via a portal so the dropdown escapes the modal's
+  // overflow-clip box (which would otherwise cut it off at the modal edge), the
+  // same pattern the When/Deadline date pickers use.
+  const pos = usePickerPosition(anchorRef, suggestions.length > 0, TAG_DROPDOWN_WIDTH);
+  if (suggestions.length === 0 || !pos) return null;
+
+  return createPortal(
+    <div style={pos} className="min-w-[160px] bg-white dark:bg-[#2A2A2A] rounded-lg shadow-[0_4px_16px_rgba(0,0,0,0.12),0_1px_4px_rgba(0,0,0,0.08)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.4)] border border-[#E8E8E8] dark:border-[#3A3A3A] py-1 overflow-hidden">
       {suggestions.map((tag, i) => {
         const color = getTagColor(tag.name, tagColors);
         const isHighlighted = i === highlightedIndex;
@@ -45,6 +55,7 @@ export function TagSuggestions({ suggestions, highlightedIndex, onSelect, tagCol
           </button>
         );
       })}
-    </div>
+    </div>,
+    document.body
   );
 }

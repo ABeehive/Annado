@@ -95,7 +95,8 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
   },
 
   setTagColor: (tag, color) => {
-    const tagColors = { ...get().tagColors, [tag]: color };
+    // Key by lowercase name so the color applies to every casing variant.
+    const tagColors = { ...get().tagColors, [tag.toLowerCase()]: color };
     set({ tagColors });
     persist('tagColors', tagColors);
   },
