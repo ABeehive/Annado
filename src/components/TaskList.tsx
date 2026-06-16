@@ -832,10 +832,18 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
   // getFilteredTasks() reads tasks and completion-linger from the store via
   // getState(), which is not a subscription. usePanelState no longer re-renders
   // this component on selection/expansion (those are per-row now), so subscribe
-  // explicitly to the data that should refresh the list.
-  useTaskStore((s) => s.tasks);
-  useTaskStore((s) => s.completingTaskIds);
-  const tasks = getFilteredTasks();
+  // explicitly to the inputs and memoize the filter — it re-runs only when an
+  // input actually changes, not on every unrelated re-render.
+  const allTasks = useTaskStore((s) => s.tasks);
+  const completingTaskIds = useTaskStore((s) => s.completingTaskIds);
+  // These deps are getFilteredTasks()'s real inputs (it reads them via getState),
+  // so they belong in the array even though the lint rule can't see them used.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const tasks = useMemo(() => getFilteredTasks(), [
+    getFilteredTasks, allTasks, completingTaskIds,
+    currentView, selectedProject, selectedPerson, selectedTag,
+    smartLists, selectedSmartListId,
+  ]);
 
   // Logbook renders incrementally (large histories); reset when leaving the view
   const LOGBOOK_PAGE_SIZE = 100;
@@ -962,6 +970,41 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
     return { thisWeek, nextWeeks, later };
   }, [currentView, selectedProject, selectedPerson, availableProjects]);
 
+  // For Today view: separate evening tasks so they render below a divider.
+  const dayTasks = useMemo(
+    () => (currentView === 'today' ? tasks.filter((t) => t.when !== 'evening') : tasks),
+    [tasks, currentView],
+  );
+  const eveningTasks = useMemo(
+    () => (currentView === 'today' ? tasks.filter((t) => t.when === 'evening') : []),
+    [tasks, currentView],
+  );
+
+  // Group tasks by project for non-project/person/tag views (except logbook and upcoming).
+  const groupedTasks = useMemo(
+    () =>
+      !selectedProject && !selectedPerson && !selectedTag && currentView !== 'logbook' && currentView !== 'upcoming'
+        ? groupTasksByProject(dayTasks)
+        : null,
+    [dayTasks, selectedProject, selectedPerson, selectedTag, currentView],
+  );
+
+  const eveningGrouped = useMemo(
+    () => (eveningTasks.length > 0 ? groupTasksByProject(eveningTasks) : null),
+    [eveningTasks],
+  );
+
+  // Group tasks by completion date for Logbook view; render incrementally so a
+  // large history doesn't mount thousands of rows at once.
+  const logbookGroups = useMemo(
+    () =>
+      currentView === 'logbook' && !selectedProject && !selectedPerson && !selectedTag
+        ? limitGroupedTasks(groupTasksByCompletionDate(tasks), logbookLimit)
+        : null,
+    [currentView, selectedProject, selectedPerson, selectedTag, tasks, logbookLimit],
+  );
+  const logbookHasMore = logbookGroups !== null && tasks.length > logbookLimit;
+
   // Local state for editing metadata
   const [editingDescription, setEditingDescription] = useState(false);
   const [localDescription, setLocalDescription] = useState('');
@@ -1006,25 +1049,6 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
     : selectedProjectInfo
       ? getProjectColor(selectedProjectInfo.name, selectedProjectInfo.parentFolder, projectColors)
       : (selectedProject ? '#5C6BC0' : config.color);
-
-  // For Today view: separate evening tasks so they render below a divider
-  const dayTasks = currentView === 'today' ? tasks.filter(t => t.when !== 'evening') : tasks;
-  const eveningTasks = currentView === 'today' ? tasks.filter(t => t.when === 'evening') : [];
-
-  // Group tasks by project for non-project and non-person and non-tag views (except logbook and upcoming)
-  const groupedTasks = !selectedProject && !selectedPerson && !selectedTag && currentView !== 'logbook' && currentView !== 'upcoming'
-    ? groupTasksByProject(dayTasks)
-    : null;
-
-  const eveningGrouped = eveningTasks.length > 0 ? groupTasksByProject(eveningTasks) : null;
-
-
-  // Group tasks by completion date for Logbook view; render incrementally so a
-  // large history doesn't mount thousands of rows at once
-  const logbookGroups = currentView === 'logbook' && !selectedProject && !selectedPerson && !selectedTag
-    ? limitGroupedTasks(groupTasksByCompletionDate(tasks), logbookLimit)
-    : null;
-  const logbookHasMore = logbookGroups !== null && tasks.length > logbookLimit;
 
   // Save metadata with partial updates
   const saveProjectMetadata = async (updates: Partial<ProjectMetadata>) => {

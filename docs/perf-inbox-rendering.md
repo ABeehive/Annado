@@ -30,8 +30,8 @@ render.
 | PR | Branch | Fix | Status |
 |----|--------|-----|--------|
 | 1 | `list-performance-primitive-selectors` | Per-row primitive selectors — kill the re-render storm | ✅ |
-| 2 | `list-performance-memoization` | Memoize filtered/grouped tasks; hoist shared Sets | planned |
-| 3 | `list-performance-split-expanded-row` | Split collapsed row from expanded editor | planned |
+| 2 | `list-performance-memoization` | Memoize filtered/grouped tasks | ✅ |
+| 3 | `list-performance-split-expanded-row` | Split collapsed row from expanded editor (+ hoist shared Sets) | planned |
 | 4 | `list-performance-virtualize` | Virtualize with `@tanstack/react-virtual` | planned |
 
 ### PR1 — primitive selectors (this branch)
@@ -43,6 +43,18 @@ navigation state + stable actions, so it re-renders only on navigation. A new
 affected rows. `TaskList` now subscribes to `tasks` / `completingTaskIds`
 directly to keep the list fresh after edits and completions (it previously
 refreshed only as a side effect of `expandedTaskId` changing on collapse).
+
+### PR2 — memoize filtered & grouped tasks
+
+`getFilteredTasks()` returned a fresh array every render and the project/logbook
+grouping ran inline on every render, so any `TaskList` re-render (after PR1:
+data changes, navigation, side-panel toggle, calendar updates) re-filtered and
+re-grouped all ~3000 tasks. Now the filtered `tasks` is memoized on its real
+inputs, and `dayTasks` / `eveningTasks` / `groupedTasks` / `eveningGrouped` /
+`logbookGroups` are `useMemo`s derived from it — moved above the early returns to
+satisfy the rules of hooks. Referentially-stable grouped arrays also set up the
+later virtualization work. (Shared-`Set` hoisting moved to PR3, which restructures
+the row internals anyway.)
 
 ## How to measure
 
