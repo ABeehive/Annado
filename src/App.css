@@ -85,6 +85,17 @@ button, input, select, textarea, a {
   color-scheme: dark;
 }
 
+/* Large lists: let the engine skip style/layout/paint for off-screen collapsed
+   rows. Rows render just-in-time as they approach the viewport; the box is
+   reserved via contain-intrinsic-size so the scrollbar stays stable, and `auto`
+   remembers each row's real height after first render so variable-height rows
+   (tags, checklist, wrapped titles) don't cause scroll jump. Only collapsed rows
+   get this — the expanded card is excluded so its animation/focus never defer. */
+.task-row-cv {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
+}
+
 /* Task expand detail section — grid row animation */
 .task-expand-detail {
   display: grid;

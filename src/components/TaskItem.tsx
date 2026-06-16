@@ -161,7 +161,7 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
   return (
     <div
       ref={rowRef}
-      className={`group cursor-pointer transition-all ${cardClasses}${isLingering ? ' task-completing' : ''}`}
+      className={`task-row-cv group cursor-pointer transition-all ${cardClasses}${isLingering ? ' task-completing' : ''}`}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
     >

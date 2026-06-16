@@ -32,7 +32,8 @@ render.
 | 1 | `list-performance-primitive-selectors` | Per-row primitive selectors — kill the re-render storm | ✅ |
 | 2 | `list-performance-memoization` | Memoize filtered/grouped tasks | ✅ |
 | 3 | `list-performance-split-expanded-row` | Split collapsed row from expanded editor (+ hoist shared Sets) | ✅ |
-| 4 | `list-performance-virtualize` | Virtualize with `@tanstack/react-virtual` | planned |
+| 4 | `list-performance-content-visibility` | `content-visibility: auto` — skip layout/paint for off-screen rows | ✅ |
+| 5 | `list-performance-virtualize` | True windowing with `@tanstack/react-virtual` | planned |
 
 ### PR1 — primitive selectors (this branch)
 
@@ -81,6 +82,27 @@ collapse so the close animation still plays.
 expand/collapse animation, title autofocus on expand, click-outside saves &
 collapses, ⌘S/⌘D open the When/Deadline pickers, Enter collapses, keyboard nav
 keeps the selected row in view, and the check-off linger animation.
+
+### PR4 — content-visibility for off-screen rows
+
+After PRs 1–3 the dominant remaining cost is the engine laying out and painting
+~3000 DOM subtrees. `content-visibility: auto` on the collapsed-row element
+(`.task-row-cv`) lets WebKit skip style/layout/paint for rows that aren't near
+the viewport and render them just-in-time on scroll; `contain-intrinsic-size:
+auto 44px` reserves the box (and `auto` remembers each row's real height after
+first render, so variable-height rows don't cause scroll jump). Only collapsed
+rows get it — the expanded card is excluded so its open/close animation and
+autofocus are never deferred.
+
+This keeps all ~3000 React components/DOM nodes (so it doesn't reduce memory or
+reconciliation), but it erases the layout/paint cost that dominates first paint
+and scroll. It composes with drag-and-drop and every view with no structural
+change. PR5 (`@tanstack/react-virtual`) is the heavier follow-up that also
+removes the nodes themselves.
+
+**Verify visually:** scroll a ~3000-item inbox (should stay smooth), fast-scroll
+for any scrollbar jump, and confirm ⌘F / keyboard-nav scroll-into-view still
+reach off-screen rows.
 
 ## How to measure
 
