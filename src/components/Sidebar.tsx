@@ -29,6 +29,9 @@ import { getViewIcon, PersonIcon } from '../utils/viewIcons';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { isDateTodayOrEarlier, isDateUpcoming } from '../utils/dates';
 import { AgendaDaySelector } from '../features/agenda/AgendaDaySelector';
+import { getFixedShortcutBindings, matchesKeybinding } from '../utils/keybindings';
+
+const FIXED_SHORTCUTS = getFixedShortcutBindings();
 
 const chevronIcon = (expanded: boolean) => (
   <svg
@@ -313,10 +316,10 @@ export function Sidebar() {
     };
   }, [isResizing, setSidebarWidth]);
 
-  // Cmd+, to open settings/shortcuts
+  // Fixed settings shortcut opens settings/shortcuts on the active platform.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === ',') {
+      if (matchesKeybinding(e, FIXED_SHORTCUTS.openSettings)) {
         e.preventDefault();
         setShowShortcuts(true);
       }
@@ -564,8 +567,8 @@ export function Sidebar() {
       className="bg-[#F8F7F6] dark:bg-[#1E1E1E] flex flex-col h-full relative"
       style={{ width: sidebarWidth }}
     >
-      {/* Traffic light padding for macOS */}
-      <div className="h-12 titlebar-drag" />
+      {/* Traffic light padding for macOS overlay titlebar */}
+      <div className="h-12 titlebar-spacer titlebar-drag" />
 
 
       <nav className="flex-1 px-4 overflow-y-auto overflow-x-hidden">

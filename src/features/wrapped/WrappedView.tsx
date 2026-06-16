@@ -31,7 +31,7 @@ export function WrappedView() {
   return (
     <div className="wrapped-view flex-1 flex flex-col min-w-0 bg-[var(--w-bg)]">
       {/* Header */}
-      <div className="pl-[52px] pr-8 pt-12 pb-4 titlebar-drag">
+      <div className="pl-[52px] pr-8 pt-12 pb-4 titlebar-drag titlebar-header">
         <div className="flex items-center gap-4 mb-4">
           <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="var(--w-gold)" strokeWidth="1.5">
             <path d="M12 3l1.5 3.2 3.5.5-2.5 2.5.6 3.5L12 11l-3.1 1.7.6-3.5L7 6.7l3.5-.5L12 3z" strokeLinecap="round" strokeLinejoin="round" />

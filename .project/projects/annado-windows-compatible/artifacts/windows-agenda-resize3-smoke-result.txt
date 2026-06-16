@@ -1,0 +1,11 @@
+Vault: C:\Users\BARTAD~1\AppData\Local\Temp\annado-windows-agenda-resize-smoke3-520f36d5ff05453c80fdd7126341eac0
+Task file: C:\Users\BARTAD~1\AppData\Local\Temp\annado-windows-agenda-resize-smoke3-520f36d5ff05453c80fdd7126341eac0\Inbox.md
+Agenda scheduled ok: True
+Agenda resized ok: False
+Screenshots:
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-agenda-resize3-01-before.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-agenda-resize3-02-scheduled.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-agenda-resize3-03-resized.png
+
+Final Inbox.md:
+- [ ] Agenda resize source @when(2026-06-16) @time(11:00) @duration(30m)

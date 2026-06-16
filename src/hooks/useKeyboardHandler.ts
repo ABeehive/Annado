@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useTaskStore } from '../stores/taskStore';
-import { matchesKeybinding } from '../utils/keybindings';
+import { getFixedShortcutBindings, hasAnyShortcutModifier, KEYBINDING_DEFAULTS, matchesKeybinding } from '../utils/keybindings';
 import { groupTasksByProject } from '../utils/taskGrouping';
 import type { RecurringTemplate, ViewType } from '../types/task';
 
@@ -27,6 +27,44 @@ function getActivePanelContext() {
   };
 }
 
+const FIXED_SHORTCUTS = getFixedShortcutBindings();
+const VIEW_SHORTCUT_ACTIONS = [
+  'viewInbox',
+  'viewToday',
+  'viewAgenda',
+  'viewUpcoming',
+  'viewAnytime',
+  'viewSomeday',
+  'viewLogbook',
+  'viewRecurring',
+  'viewWrapped',
+  'viewAddedToday',
+  'viewReview',
+];
+
+function shouldHandleShortcutWhileTyping(e: KeyboardEvent): boolean {
+  const state = useTaskStore.getState();
+  if (!state.expandedTaskId && !state.sidePanelExpandedTaskId) return false;
+
+  const { keybindings } = state;
+  const allowedBindings = [
+    FIXED_SHORTCUTS.newTask,
+    FIXED_SHORTCUTS.newRecurringTask,
+    keybindings.toggleSidePanel || KEYBINDING_DEFAULTS.toggleSidePanel,
+    keybindings.undo || KEYBINDING_DEFAULTS.undo,
+    keybindings.quickFind || KEYBINDING_DEFAULTS.quickFind,
+    keybindings.moveToProject || KEYBINDING_DEFAULTS.moveToProject,
+    keybindings.showWhen || KEYBINDING_DEFAULTS.showWhen,
+    keybindings.showDeadline || KEYBINDING_DEFAULTS.showDeadline,
+    keybindings.startToday || KEYBINDING_DEFAULTS.startToday,
+    keybindings.deleteTask || KEYBINDING_DEFAULTS.deleteTask,
+    keybindings.completeTask || KEYBINDING_DEFAULTS.completeTask,
+    ...VIEW_SHORTCUT_ACTIONS.map(action => keybindings[action] || KEYBINDING_DEFAULTS[action]),
+  ];
+
+  return allowedBindings.some(binding => matchesKeybinding(e, binding));
+}
+
 export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
   const {
     moveToProjectOpen, quickFindOpen, confirmModal,
@@ -40,26 +78,25 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs, except:
       // - Escape always blurs
-      // - meta+key shortcuts pass through when a task is expanded
+      // - command shortcuts pass through when a task is expanded
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) {
         if (e.key === 'Escape') {
           (e.target as HTMLElement).blur();
         }
-        const { expandedTaskId, sidePanelExpandedTaskId } = useTaskStore.getState();
-        if (!e.metaKey || (!expandedTaskId && !sidePanelExpandedTaskId)) return;
+        if (!shouldHandleShortcutWhileTyping(e)) return;
       }
 
       // Check customizable keybindings (side panel toggle)
       {
         const { keybindings } = useTaskStore.getState();
-        if (matchesKeybinding(e, keybindings.toggleSidePanel || 'meta+\\')) {
+        if (matchesKeybinding(e, keybindings.toggleSidePanel || KEYBINDING_DEFAULTS.toggleSidePanel)) {
           e.preventDefault();
           useTaskStore.getState().toggleSidePanel();
           return;
         }
         // Undo last task change — never while typing (text fields keep native undo)
         if (
-          matchesKeybinding(e, keybindings.undo || 'meta+z') &&
+          matchesKeybinding(e, keybindings.undo || KEYBINDING_DEFAULTS.undo) &&
           !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
         ) {
           e.preventDefault();
@@ -68,15 +105,13 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
         }
       }
 
-      // Cmd+N to open quick add
-      if (e.metaKey && e.key === 'n') {
+      if (matchesKeybinding(e, FIXED_SHORTCUTS.newTask)) {
         e.preventDefault();
         useTaskStore.getState().openQuickAdd();
         return;
       }
 
-      // Cmd+Shift+R to open recurring task modal
-      if (e.metaKey && e.shiftKey && e.key === 'r') {
+      if (matchesKeybinding(e, FIXED_SHORTCUTS.newRecurringTask)) {
         e.preventDefault();
         setEditingRecurringTemplate(null);
         setRecurringModalOpen(true);
@@ -85,14 +120,14 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
 
       const { keybindings } = useTaskStore.getState();
 
-      if (matchesKeybinding(e, keybindings.quickFind || 'meta+f')) {
+      if (matchesKeybinding(e, keybindings.quickFind || KEYBINDING_DEFAULTS.quickFind)) {
         e.preventDefault();
         setQuickFindInitialQuery('');
         setQuickFindOpen(true);
         return;
       }
 
-      if (matchesKeybinding(e, keybindings.moveToProject || 'meta+shift+m')) {
+      if (matchesKeybinding(e, keybindings.moveToProject || KEYBINDING_DEFAULTS.moveToProject)) {
         e.preventDefault();
         const { selectedIds, expandedId } = getActivePanelContext();
         if (selectedIds.length > 0 || expandedId) {
@@ -102,7 +137,7 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
       }
 
       // Show When - opens the When picker for the selected task
-      if (matchesKeybinding(e, keybindings.showWhen || 'meta+s')) {
+      if (matchesKeybinding(e, keybindings.showWhen || KEYBINDING_DEFAULTS.showWhen)) {
         e.preventDefault();
         const state = useTaskStore.getState();
         const { selectedIds, expandedId, expand } = getActivePanelContext();
@@ -115,7 +150,7 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
       }
 
       // Show Deadline - opens the Deadline picker for the selected task
-      if (matchesKeybinding(e, keybindings.showDeadline || 'meta+d')) {
+      if (matchesKeybinding(e, keybindings.showDeadline || KEYBINDING_DEFAULTS.showDeadline)) {
         e.preventDefault();
         const state = useTaskStore.getState();
         const { selectedIds, expandedId, expand } = getActivePanelContext();
@@ -128,7 +163,7 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
       }
 
       // Start Today - sets selected task(s) to "today"
-      if (matchesKeybinding(e, keybindings.startToday || 'meta+t')) {
+      if (matchesKeybinding(e, keybindings.startToday || KEYBINDING_DEFAULTS.startToday)) {
         e.preventDefault();
         const state = useTaskStore.getState();
         const { selectedIds, expandedId } = getActivePanelContext();
@@ -140,7 +175,7 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
       }
 
       // Delete Task - deletes selected task(s)
-      if (matchesKeybinding(e, keybindings.deleteTask || 'meta+backspace')) {
+      if (matchesKeybinding(e, keybindings.deleteTask || KEYBINDING_DEFAULTS.deleteTask)) {
         e.preventDefault();
         const state = useTaskStore.getState();
         const { selectedIds, expandedId } = getActivePanelContext();
@@ -157,7 +192,7 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
       }
 
       // Complete Task - toggles completion of selected task(s)
-      if (matchesKeybinding(e, keybindings.completeTask || 'meta+k')) {
+      if (matchesKeybinding(e, keybindings.completeTask || KEYBINDING_DEFAULTS.completeTask)) {
         e.preventDefault();
         const state = useTaskStore.getState();
         const { selectedIds, expandedId } = getActivePanelContext();
@@ -214,8 +249,8 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
       }
 
       // Up/Down navigation
-      const isNavigateDown = e.key === 'ArrowDown' || matchesKeybinding(e, keybindings.navigateDown || 'ctrl+j');
-      const isNavigateUp = e.key === 'ArrowUp' || matchesKeybinding(e, keybindings.navigateUp || 'ctrl+k');
+      const isNavigateDown = e.key === 'ArrowDown' || matchesKeybinding(e, keybindings.navigateDown || KEYBINDING_DEFAULTS.navigateDown);
+      const isNavigateUp = e.key === 'ArrowUp' || matchesKeybinding(e, keybindings.navigateUp || KEYBINDING_DEFAULTS.navigateUp);
 
       if (isNavigateDown || isNavigateUp) {
         e.preventDefault();
@@ -273,17 +308,17 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
 
       // View navigation shortcuts
       const viewShortcuts: [string, string, ViewType][] = [
-        ['viewInbox', 'meta+1', 'inbox'],
-        ['viewToday', 'meta+2', 'today'],
-        ['viewAgenda', 'meta+3', 'agenda'],
-        ['viewUpcoming', 'meta+4', 'upcoming'],
-        ['viewAnytime', 'meta+5', 'anytime'],
-        ['viewSomeday', 'meta+6', 'someday'],
-        ['viewLogbook', 'meta+7', 'logbook'],
-        ['viewRecurring', 'meta+8', 'recurring'],
-        ['viewWrapped', 'meta+9', 'wrapped'],
-        ['viewAddedToday', 'meta+0', 'added-today'],
-        ['viewReview', 'meta+r', 'review'],
+        ['viewInbox', KEYBINDING_DEFAULTS.viewInbox, 'inbox'],
+        ['viewToday', KEYBINDING_DEFAULTS.viewToday, 'today'],
+        ['viewAgenda', KEYBINDING_DEFAULTS.viewAgenda, 'agenda'],
+        ['viewUpcoming', KEYBINDING_DEFAULTS.viewUpcoming, 'upcoming'],
+        ['viewAnytime', KEYBINDING_DEFAULTS.viewAnytime, 'anytime'],
+        ['viewSomeday', KEYBINDING_DEFAULTS.viewSomeday, 'someday'],
+        ['viewLogbook', KEYBINDING_DEFAULTS.viewLogbook, 'logbook'],
+        ['viewRecurring', KEYBINDING_DEFAULTS.viewRecurring, 'recurring'],
+        ['viewWrapped', KEYBINDING_DEFAULTS.viewWrapped, 'wrapped'],
+        ['viewAddedToday', KEYBINDING_DEFAULTS.viewAddedToday, 'added-today'],
+        ['viewReview', KEYBINDING_DEFAULTS.viewReview, 'review'],
       ];
       for (const [action, defaultBinding, view] of viewShortcuts) {
         if (matchesKeybinding(e, keybindings[action] || defaultBinding)) {
@@ -297,7 +332,7 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
       // Type-to-search: open Quick Find when typing a printable character
       const { currentView: view } = useTaskStore.getState();
       if (view !== 'review' && view !== 'wrapped' && view !== 'agenda' &&
-          !e.metaKey && !e.ctrlKey && !e.altKey &&
+          !hasAnyShortcutModifier(e) &&
           e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) {
         e.preventDefault();
         setQuickFindInitialQuery(e.key);

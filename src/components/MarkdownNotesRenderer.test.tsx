@@ -45,6 +45,17 @@ describe('markdown links survive emphasis tokenization', () => {
     expect(openUrl).toHaveBeenCalledWith('https://en.wikipedia.org/wiki/Foo_bar');
   });
 
+  it('opens Windows absolute file links as file URLs', () => {
+    render(
+      <MarkdownNotesRenderer
+        {...baseProps}
+        notes={String.raw`[Spec](C:\Users\demo\Vault\Spec File.pdf)`}
+      />
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Spec' }));
+    expect(openUrl).toHaveBeenCalledWith('file:///C:/Users/demo/Vault/Spec%20File.pdf');
+  });
+
   it('still italicizes underscore emphasis outside links', () => {
     render(<MarkdownNotesRenderer {...baseProps} notes="this is _important_ stuff" />);
     const em = screen.getByText('important');

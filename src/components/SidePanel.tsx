@@ -79,7 +79,7 @@ export function SidePanel() {
         />
 
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 pt-12 pb-3 titlebar-drag">
+        <div className="flex items-center gap-2 px-4 pt-12 pb-3 titlebar-drag titlebar-header titlebar-header-compact">
           {subViewLabel ? (
             <>
               <button

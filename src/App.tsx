@@ -50,6 +50,7 @@ class ErrorBoundary extends React.Component<
 
 function App() {
   const { vaultPath, currentView } = useTaskStore(useShallow((s) => ({ vaultPath: s.vaultPath, currentView: s.currentView, })));
+  const isMacosTitlebarOverlay = document.documentElement.dataset.platform === 'macos';
   useTheme();
   useAppEvents();
   const [moveToProjectOpen, setMoveToProjectOpen] = useState(false);
@@ -95,17 +96,19 @@ function App() {
     <ErrorBoundary>
       <div className="h-screen flex bg-[#FEFEFE] dark:bg-[#1A1A1A]">
         {/* Drag zone for window movement - covers top of window */}
-        <div
-          data-tauri-drag-region
-          className="fixed top-0 left-0 right-0 h-8 z-[9999]"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-          onMouseDown={(e) => {
-            // Only drag if not clicking on interactive elements
-            if ((e.target as HTMLElement).closest('button, input, select, a')) return;
-            e.preventDefault();
-            getCurrentWindow().startDragging();
-          }}
-        />
+        {isMacosTitlebarOverlay && (
+          <div
+            data-tauri-drag-region
+            className="fixed top-0 left-0 right-0 h-8 z-[9999]"
+            style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+            onMouseDown={(e) => {
+              // Only drag if not clicking on interactive elements
+              if ((e.target as HTMLElement).closest('button, input, select, a')) return;
+              e.preventDefault();
+              getCurrentWindow().startDragging();
+            }}
+          />
+        )}
         <Sidebar />
         <DndContext
           sensors={dndSensors}

@@ -1,0 +1,71 @@
+Synthetic vault smoke, Windows debug app
+Vault leaf: annado-windows-core-smoke3-eca962c5ec7d4d1d8782741f6900c9dc
+Pass: True
+First-run vault selection ok: True
+Scan data present (project/person/tag/recurring): True
+Quick Find exercised: True
+Quick Add created markdown task: True
+Edit persisted to markdown: True
+Complete persisted to markdown: True
+Delete persisted to markdown: True
+Side panel exercised: True
+Agenda scheduling wrote @time: True
+Restart persistence ok: True
+Unsupported native integrations did not break startup/smoke: True
+Screenshots:
+.project/projects/annado-windows-compatible/artifacts/windows-core3-01-first-run.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-02-vault-loaded.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-03-quick-find-alpha.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-04-recurring.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-05-after-quick-add.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-06-after-edit.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-07-after-delete.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-08-after-complete.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-09-side-panel.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-10-agenda-before.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-11-agenda-scheduled.png
+.project/projects/annado-windows-compatible/artifacts/windows-core3-12-restart-persistence.png
+
+Final markdown:
+---
+date: 2026-06-16
+---
+
+# Tuesday, June 16, 2026
+
+## Tasks
+
+- [ ] Quick add smoke #quick @created(2026-06-16)
+
+---
+organisation: Smoke Lab
+relationship: teammate
+---
+# Ada Lovelace
+
+- [ ] Person page task [[Smoke Project]] #persontag
+---
+description: Smoke project metadata
+---
+# Smoke Project
+
+- [ ] Project page task #projecttag
+# Smoke Inbox
+
+- [ ] Complete me smoke #alpha [[Smoke Project]] [[Ada Lovelace]]
+    Complete notes smoke
+- [ ] Edited smoke task #edited #edittarget
+- [x] Complete inbox smoke #completetarget @completed(2026-06-16)
+- [ ] Searchable smoke #alpha [[Smoke Project]] @created(2026-06-16)
+- [ ] Agenda core source @when(2026-06-16) @time(12:00) @duration(30m)
+---
+recurrence_type: fixed
+interval: 1
+interval_unit: weeks
+start_date: 2026-06-16
+template_id: smoke-weekly
+annado_exclude: true
+---
+
+- [ ] Weekly smoke template [[Smoke Project]] #repeat !(2)
+    recurring notes

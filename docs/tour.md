@@ -45,7 +45,7 @@ The same task in Annado and in the raw markdown file:
 
 ![Side-by-side with the markdown source](images/markdown-side-by-side.png)
 
-The annotation syntax in a plain editor — `@when`, `@due`, `!(priority)`, checklists:
+The annotation syntax in a plain editor — task marker tags, `@when`, `@due`, Obsidian Tasks emoji dates, `!(priority)`, checklists:
 
 ![Raw markdown](images/raw-markdown.png)
 
@@ -141,7 +141,7 @@ A second view in the side panel, with drag-and-drop between the two:
 
 ![Side panel](images/side-panel.png)
 
-The menu bar panel keeps today's list one click away:
+The macOS menu bar or Windows tray panel keeps today's list one click away:
 
 ![Menu bar panel](images/menu-bar.png)
 
@@ -167,7 +167,7 @@ General: vault, external editor, theme, and accent color:
 
 ![Settings — General](images/settings-general.png)
 
-Calendar: per-calendar blocking, work schedule, and breaks that drive auto-scheduling:
+Calendar: macOS calendar blocking, work schedule, and breaks that drive auto-scheduling. On Windows, Calendar integration is disabled while task scheduling remains available:
 
 ![Settings — Calendar](images/settings-calendar.png)
 
@@ -175,6 +175,6 @@ Shortcuts: every binding visible, customisable ones remappable:
 
 ![Settings — Shortcuts](images/settings-shortcuts.png)
 
-Notifications: deadline reminders with per-type times, menu bar icon, launch banner:
+Notifications: deadline reminders with per-type times, macOS menu bar or Windows tray icon, launch banner:
 
 ![Settings — Notifications](images/settings-notifications.png)

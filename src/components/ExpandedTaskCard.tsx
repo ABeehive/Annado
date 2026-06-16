@@ -68,7 +68,7 @@ export function ExpandedTaskCard({ task, isCollapsing, isSoleSelection }: Expand
     return () => cancelAnimationFrame(id);
   }, []);
 
-  // When a date shortcut (Cmd+S / Cmd+D) targets this task, scroll the card to the
+  // When a date shortcut targets this task, scroll the card to the
   // top so the picker that's about to open is fully in view.
   const isPickerTarget = whenPickerForceOpen || deadlinePickerForceOpen;
   useLayoutEffect(() => {

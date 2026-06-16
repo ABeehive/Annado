@@ -8,6 +8,21 @@ import { PersonIcon } from './viewIcons';
 
 const BLOCKED_URL_SCHEMES = ['javascript:', 'data:', 'vbscript:', 'blob:'];
 
+function isAbsoluteFilePath(url: string): boolean {
+  return /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(url);
+}
+
+function absolutePathToFileUrl(path: string): string {
+  const normalized = path.replace(/\\/g, '/');
+  if (/^[a-zA-Z]:\//.test(normalized)) {
+    return `file:///${encodeURI(normalized)}`;
+  }
+  if (normalized.startsWith('//')) {
+    return `file:${encodeURI(normalized)}`;
+  }
+  return `file://${encodeURI(normalized)}`;
+}
+
 function isSafeUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -30,10 +45,10 @@ export function MarkdownLink({ text, url }: { text: string; url: string }) {
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    if (!isSafeUrl(url)) return;
+    const target = isAbsoluteFilePath(url) ? absolutePathToFileUrl(url) : url;
+    if (!isSafeUrl(target)) return;
     // Bare absolute paths ("/Users/…/file.pdf") aren't valid URLs for the
     // opener — convert to a file:// URL (encodeURI handles the spaces).
-    const target = url.startsWith('/') ? 'file://' + encodeURI(url) : url;
     openUrl(target).catch((err) => console.warn('Failed to open link:', target, err));
   };
 

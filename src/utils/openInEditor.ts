@@ -1,7 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { getObsidianUrl } from './obsidian';
+import { getObsidianUrl, joinVaultPath, normalizePathSeparators } from './obsidian';
 import type { EditorType } from '../types/task';
+
+function getVsCodeFileUrl(filePath: string, lineNumber: number): string {
+  return `vscode://file/${encodeURI(normalizePathSeparators(filePath))}:${lineNumber}`;
+}
 
 export async function openInEditor(
   vaultPath: string,
@@ -11,12 +15,14 @@ export async function openInEditor(
   editorType: EditorType,
   customCommand: string,
 ): Promise<void> {
+  const absolutePath = joinVaultPath(vaultPath, filePath);
+
   if (isObsidianVault) {
     await openUrl(getObsidianUrl(vaultPath, filePath));
   } else if (editorType === 'vscode') {
-    await openUrl(`vscode://file/${filePath}:${lineNumber}`);
+    await openUrl(getVsCodeFileUrl(absolutePath, lineNumber));
   } else {
-    await invoke('open_file_in_editor', { filePath, lineNumber, editorType, customCommand });
+    await invoke('open_file_in_editor', { filePath: absolutePath, lineNumber, editorType, customCommand });
   }
 }
 

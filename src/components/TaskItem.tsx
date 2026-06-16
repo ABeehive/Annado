@@ -8,6 +8,7 @@ import { PRIORITY_CONFIG } from '../utils/projectColors';
 import { formatWhenDisplay, formatDeadlineCountdown, getDeadlineUrgency, formatDateForDisplay, getToday } from '../utils/dates';
 import { InlineMarkdown, WikilinkProps } from './MarkdownNotesRenderer';
 import { ExpandedTaskCard } from './ExpandedTaskCard';
+import { isMultiSelectModifier } from '../utils/keybindings';
 
 interface TaskItemProps {
   task: Task;
@@ -86,7 +87,7 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
 
   const handleClick = (e: React.MouseEvent) => {
     // Single click = select/highlight
-    toggleTaskSelection(task.id, e.metaKey || e.ctrlKey);
+    toggleTaskSelection(task.id, isMultiSelectModifier(e));
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {

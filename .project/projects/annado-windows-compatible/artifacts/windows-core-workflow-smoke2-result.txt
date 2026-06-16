@@ -1,0 +1,62 @@
+Synthetic vault smoke, Windows debug app
+Vault leaf: annado-windows-core-smoke2-31871682277d41aea48635d2bfabda83
+First-run vault selection ok: True
+Scan data present (project/person/tag/recurring): True
+Quick Add created markdown task: True
+Edit persisted to markdown: True
+Complete persisted to markdown: False
+Delete persisted to markdown: True
+Agenda scheduling wrote @time: True
+Restart persistence ok: False
+Unsupported native integrations did not break startup/smoke: True
+Screenshots:
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-01-first-run.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-02-vault-loaded.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-03-quick-find-alpha.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-04-after-quick-add.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-05-after-edit.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-06-after-complete.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-07-after-delete.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-08-side-panel.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-09-agenda-before.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-10-agenda-scheduled.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-core2-11-restart-persistence.png
+
+Final markdown:
+- [ ] Complete me smoke #alpha [[Smoke Project]] [[Ada Lovelace]]
+    Complete notes smoke
+- [ ] Edit me smokeEdited smoke task #edited #edit
+- [ ] Searchable smoke #alpha [[Smoke Project]] @created(2026-06-16)
+- [ ] Agenda core source @when(2026-06-16) @time(11:00) @duration(30m)
+---
+date: 2026-06-16
+---
+
+# Tuesday, June 16, 2026
+
+## Tasks
+
+- [ ] Quick add smoke #quick @created(2026-06-16)
+
+---
+recurrence_type: fixed
+interval: 1
+interval_unit: weeks
+start_date: 2026-06-16
+template_id: smoke-weekly
+annado_exclude: true
+---
+
+- [ ] Weekly smoke template [[Smoke Project]] #repeat !(2)
+    recurring notes
+---
+organisation: Smoke Lab
+relationship: teammate
+---
+# Ada Lovelace
+- [ ] Person page task [[Smoke Project]] #persontag
+---
+description: Smoke project metadata
+---
+# Smoke Project
+- [ ] Project page task #projecttag

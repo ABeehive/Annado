@@ -1,0 +1,17 @@
+Vault: C:\Users\BARTAD~1\AppData\Local\Temp\annado-windows-dnd-full-smoke-6aa7b44693974cc0be7b6798bd5b8fc0
+Task file: C:\Users\BARTAD~1\AppData\Local\Temp\annado-windows-dnd-full-smoke-6aa7b44693974cc0be7b6798bd5b8fc0\Inbox.md
+Panel drop ok: True
+Agenda scheduled ok: False
+Agenda resized ok: False
+Screenshots:
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-dnd-full-01-loaded.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-dnd-full-02-panel-before.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-dnd-full-03-panel-after.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-dnd-full-04-agenda-before.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-dnd-full-05-agenda-scheduled.png
+E:\Development\annado\.project\projects\annado-windows-compatible\artifacts\windows-dnd-full-06-agenda-resized.png
+
+Final Inbox.md:
+- [ ] Panel drag source @when(2026-06-16)
+- [ ] Today panel target @when(2026-06-16)
+- [ ] Agenda resize source @when(2026-06-16) @duration(30m)

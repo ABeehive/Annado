@@ -5,9 +5,16 @@ import { useTaskStore } from '../stores/taskStore';
 import { PROJECT_COLORS, DEFAULT_ACCENT } from '../utils/projectColors';
 import { ScheduleBreak, DEFAULT_WORK_SCHEDULE } from '../features/agenda/types';
 import { Toggle } from './Toggle';
-import { KeybindingInput, KEYBINDING_DEFAULTS } from './KeybindingInput';
+import { KeybindingInput } from './KeybindingInput';
 import { NotificationSettings } from '../features/notifications/NotificationSettings';
 import { AboutSettings } from './AboutSettings';
+import { getPathBaseName } from '../utils/obsidian';
+import {
+  formatKeybinding,
+  getFixedShortcutBindings,
+  getPrimaryModifierLabel,
+  KEYBINDING_DEFAULTS,
+} from '../utils/keybindings';
 
 interface SettingsProps {
   isOpen: boolean;
@@ -19,28 +26,29 @@ interface ShortcutGroup {
   items: { keys: string[]; description: string }[];
 }
 
+const fixedShortcuts = getFixedShortcutBindings();
 const shortcutGroups: ShortcutGroup[] = [
   {
     group: 'Tasks',
     items: [
-      { keys: ['⌘', 'N'], description: 'New task' },
-      { keys: ['⌘', '⇧', 'R'], description: 'New recurring task' },
+      { keys: formatKeybinding(fixedShortcuts.newTask), description: 'New task' },
+      { keys: formatKeybinding(fixedShortcuts.newRecurringTask), description: 'New recurring task' },
       { keys: ['Enter'], description: 'Expand / collapse task' },
-      { keys: ['⌘', 'Click'], description: 'Multi-select tasks' },
+      { keys: [getPrimaryModifierLabel(), 'Click'], description: 'Multi-select tasks' },
     ],
   },
   {
     group: 'Agenda',
     items: [
-      { keys: ['←', '→'], description: 'Navigate day / week' },
-      { keys: ['⇧', '←', '→'], description: 'Navigate by week' },
+      { keys: ['Left', 'Right'], description: 'Navigate day / week' },
+      { keys: ['Shift', 'Left', 'Right'], description: 'Navigate by week' },
       { keys: ['T'], description: 'Jump to today' },
     ],
   },
   {
     group: 'App',
     items: [
-      { keys: ['⌘', ','], description: 'Open settings' },
+      { keys: formatKeybinding(fixedShortcuts.openSettings), description: 'Open settings' },
       { keys: ['Esc'], description: 'Close panel / Deselect' },
       { keys: ['Type'], description: 'Quick Find (type anywhere)' },
     ],
@@ -51,7 +59,7 @@ type SettingsTab = 'general' | 'calendar' | 'shortcuts' | 'notifications' | 'abo
 
 
 export function SettingsModal({ isOpen, onClose }: SettingsProps) {
-  const { vaultPath, setVaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, calendarEnabled, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault, editorType, editorCustomCommand, setEditorConfig } = useTaskStore();
+  const { vaultPath, setVaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, calendarEnabled, calendarSupported, detectCalendarSupport, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarError, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault, editorType, editorCustomCommand, setEditorConfig } = useTaskStore();
   const [isChangingVault, setIsChangingVault] = useState(false);
   const [localFolderPaths, setLocalFolderPaths] = useState(folderPaths);
   const [isSavingFolderPaths, setIsSavingFolderPaths] = useState(false);
@@ -64,6 +72,12 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      void detectCalendarSupport();
+    }
+  }, [isOpen, detectCalendarSupport]);
 
   // Update local state when store changes
   useEffect(() => {
@@ -88,9 +102,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
   const folderPathsChanged =
     localFolderPaths.recurringTemplates !== folderPaths.recurringTemplates ||
     localFolderPaths.projectsPattern !== folderPaths.projectsPattern ||
+    localFolderPaths.areasPattern !== folderPaths.areasPattern ||
     localFolderPaths.personsPattern !== folderPaths.personsPattern ||
     localFolderPaths.dailyNotesFolder !== folderPaths.dailyNotesFolder ||
-    localFolderPaths.dailyNotesFormat !== folderPaths.dailyNotesFormat;
+    localFolderPaths.dailyNotesFormat !== folderPaths.dailyNotesFormat ||
+    localFolderPaths.taskMarkerTag !== folderPaths.taskMarkerTag;
 
   if (!isOpen) return null;
 
@@ -113,7 +129,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
     }
   };
 
-  const vaultName = vaultPath?.split('/').pop() || 'Unknown';
+  const vaultName = vaultPath ? getPathBaseName(vaultPath) : 'Unknown';
 
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'general', label: 'General' },
@@ -433,6 +449,33 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
                 </div>
               </div>
 
+              {/* Task Parsing Section */}
+              <div>
+                <h3 className="text-[10px] font-semibold text-[#B0B0B0] dark:text-[#555] uppercase tracking-wider mb-3">
+                  Task Parsing
+                </h3>
+                <div>
+                  <label className="block text-[13px] text-[#1A1A1A] dark:text-[#E0E0E0] mb-1.5">
+                    Task Marker Tag
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] text-[#888] dark:text-[#777]">#</span>
+                    <input
+                      type="text"
+                      value={localFolderPaths.taskMarkerTag}
+                      onChange={(e) =>
+                        handleFolderPathChange('taskMarkerTag', e.target.value.replace(/^#/, ''))
+                      }
+                      className="w-full px-3 py-2 text-[13px] bg-transparent border-b border-[#E8E8E8] dark:border-[#3A3A3A] text-[#1A1A1A] dark:text-[#E0E0E0] placeholder-[#C0C0C0] dark:placeholder-[#555] focus:outline-none focus:border-primary/40 transition-colors"
+                      placeholder="task"
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-[#B0B0B0] dark:text-[#555]">
+                    Only top-level checkboxes with this tag are imported. Leave blank to import every top-level checkbox.
+                  </p>
+                </div>
+              </div>
+
               {/* Folder Paths Section */}
               <div>
                 <h3 className="text-[10px] font-semibold text-[#B0B0B0] dark:text-[#555] uppercase tracking-wider mb-3">
@@ -536,7 +579,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
                       disabled={isSavingFolderPaths}
                       className="w-full px-4 py-2 text-[13px] font-medium text-white bg-primary hover:bg-[#4A5AB8] rounded-lg transition-colors disabled:opacity-50"
                     >
-                      {isSavingFolderPaths ? 'Saving...' : 'Save Folder Paths'}
+                      {isSavingFolderPaths ? 'Saving...' : 'Save Task & Folder Settings'}
                     </button>
                   )}
                 </div>
@@ -587,99 +630,107 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
                 Calendar
               </h3>
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px] text-[#1A1A1A] dark:text-[#E0E0E0]">
-                    Show Calendar Events
-                  </span>
-                  <Toggle
-                    checked={calendarEnabled}
-                    onClick={async () => {
-                      if (!calendarEnabled) {
-                        const granted = await checkCalendarAccess();
-                        if (granted) { setCalendarPermissionError(false); setCalendarEnabled(true); }
-                        else { setCalendarPermissionError(true); }
-                      } else {
-                        setCalendarEnabled(false);
-                        setCalendarPermissionError(false);
-                      }
-                    }}
-                  />
-                </div>
-
-                {calendarPermissionError && (
-                  <div className="text-[12px] text-danger bg-danger/8 px-3 py-2 rounded-lg">
-                    Calendar access denied. Go to System Settings &gt; Privacy &amp; Security &gt; Calendars and enable access for Annado.
+                {!calendarSupported ? (
+                  <div className="text-[12px] text-[#777] dark:text-[#999] bg-[#F7F7F7] dark:bg-[#333] px-3 py-2 rounded-lg">
+                    Calendar events are only available on macOS. Schedule settings below still control auto-scheduling.
                   </div>
-                )}
-
-                {calendarEnabled && calendarAccessGranted && availableCalendars.length > 0 && (
-                  <div className="space-y-1 mt-1">
-                    <div className="space-y-1 mb-2">
-                      <div className="flex items-center justify-between text-[11px] text-[#B0B0B0] dark:text-[#555]">
-                        <span>Calendars</span>
-                        <span>Blocks</span>
-                      </div>
-                      <p className="text-[11px] text-[#B0B0B0] dark:text-[#555] leading-relaxed">
-                        When <strong className="font-medium">Blocks</strong> is on, events in that calendar are treated as busy time — Annado won't auto-schedule tasks during them.
-                      </p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] text-[#1A1A1A] dark:text-[#E0E0E0]">
+                        Show Calendar Events
+                      </span>
+                      <Toggle
+                        checked={calendarEnabled}
+                        onClick={async () => {
+                          if (!calendarEnabled) {
+                            const granted = await checkCalendarAccess();
+                            if (granted) { setCalendarPermissionError(false); setCalendarEnabled(true); }
+                            else { setCalendarPermissionError(true); }
+                          } else {
+                            setCalendarEnabled(false);
+                            setCalendarPermissionError(false);
+                          }
+                        }}
+                      />
                     </div>
-                    {availableCalendars.map((cal) => {
-                      const isEnabled = enabledCalendarNames.includes(cal.name);
-                      const isBlocking = calendarBlockingDefaults[cal.name] ?? true;
-                      return (
-                        <div
-                          key={cal.id}
-                          className="flex items-center gap-2.5 py-1.5 px-1.5 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] rounded-lg"
-                        >
-                          {/* Visibility checkbox */}
-                          <label className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={isEnabled}
-                              onChange={() => toggleCalendar(cal.name)}
-                              className="sr-only"
-                            />
+
+                    {calendarPermissionError && (
+                      <div className="text-[12px] text-danger bg-danger/8 px-3 py-2 rounded-lg">
+                        {calendarError ?? 'Calendar access denied. Go to System Settings > Privacy & Security > Calendars and enable access for Annado.'}
+                      </div>
+                    )}
+
+                    {calendarEnabled && calendarAccessGranted && availableCalendars.length > 0 && (
+                      <div className="space-y-1 mt-1">
+                        <div className="space-y-1 mb-2">
+                          <div className="flex items-center justify-between text-[11px] text-[#B0B0B0] dark:text-[#555]">
+                            <span>Calendars</span>
+                            <span>Blocks</span>
+                          </div>
+                          <p className="text-[11px] text-[#B0B0B0] dark:text-[#555] leading-relaxed">
+                            When <strong className="font-medium">Blocks</strong> is on, events in that calendar are treated as busy time - Annado won't auto-schedule tasks during them.
+                          </p>
+                        </div>
+                        {availableCalendars.map((cal) => {
+                          const isEnabled = enabledCalendarNames.includes(cal.name);
+                          const isBlocking = calendarBlockingDefaults[cal.name] ?? true;
+                          return (
                             <div
-                              className={`w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 ${
-                                isEnabled
-                                  ? 'border-transparent'
-                                  : 'border-[#D8D8D8] dark:border-[#555]'
-                              }`}
-                              style={isEnabled ? { background: cal.color } : {}}
+                              key={cal.id}
+                              className="flex items-center gap-2.5 py-1.5 px-1.5 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] rounded-lg"
                             >
+                              {/* Visibility checkbox */}
+                              <label className="flex items-center gap-2.5 flex-1 min-w-0 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={isEnabled}
+                                  onChange={() => toggleCalendar(cal.name)}
+                                  className="sr-only"
+                                />
+                                <div
+                                  className={`w-4 h-4 rounded flex items-center justify-center border flex-shrink-0 ${
+                                    isEnabled
+                                      ? 'border-transparent'
+                                      : 'border-[#D8D8D8] dark:border-[#555]'
+                                  }`}
+                                  style={isEnabled ? { background: cal.color } : {}}
+                                >
+                                  {isEnabled && (
+                                    <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                                      <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+                                    </svg>
+                                  )}
+                                </div>
+                                <div
+                                  className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                  style={{ background: cal.color }}
+                                />
+                                <span className="text-[13px] text-[#1A1A1A] dark:text-[#E0E0E0] truncate">
+                                  {cal.name}
+                                </span>
+                              </label>
+
+                              {/* Blocking toggle - only shown when calendar is enabled */}
                               {isEnabled && (
-                                <svg className="w-3 h-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                  <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
+                                <Toggle
+                                  checked={isBlocking}
+                                  onChange={(v) => setCalendarBlocking(cal.name, v)}
+                                  title={isBlocking ? 'Blocks auto-scheduling' : 'Does not block auto-scheduling'}
+                                />
                               )}
                             </div>
-                            <div
-                              className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                              style={{ background: cal.color }}
-                            />
-                            <span className="text-[13px] text-[#1A1A1A] dark:text-[#E0E0E0] truncate">
-                              {cal.name}
-                            </span>
-                          </label>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                          {/* Blocking toggle — only shown when calendar is enabled */}
-                          {isEnabled && (
-                            <Toggle
-                              checked={isBlocking}
-                              onChange={(v) => setCalendarBlocking(cal.name, v)}
-                              title={isBlocking ? 'Blocks auto-scheduling' : 'Does not block auto-scheduling'}
-                            />
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {calendarEnabled && calendarAccessGranted && availableCalendars.length === 0 && (
-                  <div className="text-[12px] text-[#B0B0B0] dark:text-[#555]">
-                    No calendars found. Make sure Calendar.app has calendars configured.
-                  </div>
+                    {calendarEnabled && calendarAccessGranted && availableCalendars.length === 0 && (
+                      <div className="text-[12px] text-[#B0B0B0] dark:text-[#555]">
+                        No calendars found. Make sure Calendar.app has calendars configured.
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 

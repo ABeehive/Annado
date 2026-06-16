@@ -1,18 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-
-// Convert keybinding string to display format
-function formatKeybinding(binding: string): string[] {
-  const parts = binding.toLowerCase().split('+');
-  return parts.map(part => {
-    switch (part) {
-      case 'meta': return '⌘';
-      case 'shift': return '⇧';
-      case 'ctrl': return '⌃';
-      case 'alt': return '⌥';
-      default: return part.toUpperCase();
-    }
-  });
-}
+import { formatKeybinding } from '../utils/keybindings';
 
 interface KeybindingInputProps {
   value: string;
@@ -30,35 +17,32 @@ export function KeybindingInput({ value, onChange }: KeybindingInputProps) {
       e.preventDefault();
       e.stopPropagation();
 
-      // Escape cancels recording
       if (e.key === 'Escape') {
         setIsRecording(false);
         return;
       }
 
-      // Build the keybinding string
       const parts: string[] = [];
+      // Record meta explicitly so existing macOS and Windows-key custom bindings round-trip.
       if (e.metaKey) parts.push('meta');
       if (e.ctrlKey) parts.push('ctrl');
       if (e.altKey) parts.push('alt');
       if (e.shiftKey) parts.push('shift');
 
-      // Don't record modifier-only presses
       const key = e.key.toLowerCase();
       if (['meta', 'control', 'alt', 'shift'].includes(key)) {
         return;
       }
 
-      // Only allow keys that the Rust parser supports
-      const SUPPORTED_KEYS = new Set([
-        'a','b','c','d','e','f','g','h','i','j','k','l','m',
-        'n','o','p','q','r','s','t','u','v','w','x','y','z',
-        '0','1','2','3','4','5','6','7','8','9',
+      const supportedKeys = new Set([
+        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+        'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
         ' ', 'enter', 'escape', 'backspace', 'tab',
       ]);
-      if (!SUPPORTED_KEYS.has(key)) return;
+      if (!supportedKeys.has(key)) return;
 
-      parts.push(key);
+      parts.push(key === ' ' ? 'space' : key);
       onChange(parts.join('+'));
       setIsRecording(false);
     };
@@ -67,12 +51,13 @@ export function KeybindingInput({ value, onChange }: KeybindingInputProps) {
       setIsRecording(false);
     };
 
+    const button = buttonRef.current;
     window.addEventListener('keydown', handleKeyDown, true);
-    buttonRef.current?.addEventListener('blur', handleBlur);
+    button?.addEventListener('blur', handleBlur);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
-      buttonRef.current?.removeEventListener('blur', handleBlur);
+      button?.removeEventListener('blur', handleBlur);
     };
   }, [isRecording, onChange]);
 

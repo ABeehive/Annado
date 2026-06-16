@@ -1,31 +1,8 @@
-use serde::{Deserialize, Serialize};
 use std::ffi::{c_void, CStr, CString};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct CalendarInfo {
-    pub id: String,
-    pub name: String,
-    pub color: String,
-    pub account_name: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct CalendarEvent {
-    pub id: String,
-    pub title: String,
-    pub calendar_name: String,
-    pub calendar_color: String,
-    pub start_date: String,
-    pub end_date: String,
-    pub is_all_day: bool,
-    pub location: Option<String>,
-    pub url: Option<String>,
-    pub notes: Option<String>,
-}
+pub use crate::calendar_types::{CalendarEvent, CalendarInfo};
 
 // --- Minimal ObjC runtime FFI for EventKit ---
 type Id = *mut c_void;
@@ -53,8 +30,7 @@ const DISPATCH_TIME_FOREVER: u64 = !0; // UINT64_MAX
 // Macro for objc message sends with different argument counts
 macro_rules! msg_id {
     ($obj:expr, $sel:expr) => {{
-        let f: unsafe extern "C" fn(Id, Sel) -> Id =
-            std::mem::transmute(objc_msgSend as *const ());
+        let f: unsafe extern "C" fn(Id, Sel) -> Id = std::mem::transmute(objc_msgSend as *const ());
         f($obj as Id, sel_reg($sel))
     }};
     ($obj:expr, $sel:expr, $a1:expr) => {{
@@ -110,21 +86,35 @@ fn nsstring(s: &str) -> Id {
         let alloc = msg_id!(cls, "alloc");
         let f: unsafe extern "C" fn(Id, Sel, *const u8, usize, u64) -> Id =
             std::mem::transmute(objc_msgSend as *const ());
-        f(alloc, sel_reg("initWithBytes:length:encoding:"), s.as_ptr(), s.len(), 4u64)
+        f(
+            alloc,
+            sel_reg("initWithBytes:length:encoding:"),
+            s.as_ptr(),
+            s.len(),
+            4u64,
+        )
     }
 }
 
 fn from_nsstring(obj: Id) -> String {
-    if obj.is_null() { return String::new(); }
+    if obj.is_null() {
+        return String::new();
+    }
     unsafe {
         let raw = msg_id!(obj, "UTF8String");
-        if raw.is_null() { return String::new(); }
-        CStr::from_ptr(raw as *const i8).to_string_lossy().into_owned()
+        if raw.is_null() {
+            return String::new();
+        }
+        CStr::from_ptr(raw as *const i8)
+            .to_string_lossy()
+            .into_owned()
     }
 }
 
 fn nsdate_to_iso(date: Id) -> String {
-    if date.is_null() { return String::new(); }
+    if date.is_null() {
+        return String::new();
+    }
     unsafe {
         // Use NSDateFormatter with ISO 8601
         let cls = objc_getClass(c"NSISO8601DateFormatter".as_ptr());
@@ -141,37 +131,46 @@ fn nsdate_to_iso(date: Id) -> String {
 /// NSCalendar.currentCalendar respects the machine's timezone, so the result
 /// is always the date the user sees on their system clock — not a UTC-shifted date.
 fn nsdate_to_local_date_string(date: Id) -> String {
-    if date.is_null() { return String::new(); }
+    if date.is_null() {
+        return String::new();
+    }
     unsafe {
         let cal_cls = objc_getClass(c"NSCalendar".as_ptr());
         let cal = msg_id!(cal_cls, "currentCalendar");
         // NSCalendarUnitYear (4) | NSCalendarUnitMonth (8) | NSCalendarUnitDay (16) = 28
         let units: usize = 28;
         let components = msg_id!(cal, "components:fromDate:", units, date);
-        let year  = msg_usize!(components, "year");
+        let year = msg_usize!(components, "year");
         let month = msg_usize!(components, "month");
-        let day   = msg_usize!(components, "day");
+        let day = msg_usize!(components, "day");
         format!("{:04}-{:02}-{:02}", year, month, day)
     }
 }
 
 /// Get CGFloat components from NSColor/CIColor
 fn color_to_hex(color: Id) -> String {
-    if color.is_null() { return "#888888".to_string(); }
+    if color.is_null() {
+        return "#888888".to_string();
+    }
     unsafe {
         // Get CGColor, then create CIColor from it
         let cgcolor = msg_id!(color, "CGColor");
-        if cgcolor.is_null() { return "#888888".to_string(); }
+        if cgcolor.is_null() {
+            return "#888888".to_string();
+        }
 
         let ci_cls = objc_getClass(c"CIColor".as_ptr());
         let ci_color = msg_id!(ci_cls, "colorWithCGColor:", cgcolor);
-        if ci_color.is_null() { return "#888888".to_string(); }
+        if ci_color.is_null() {
+            return "#888888".to_string();
+        }
 
         let r = msg_f64!(ci_color, "red");
         let g = msg_f64!(ci_color, "green");
         let b = msg_f64!(ci_color, "blue");
 
-        format!("#{:02x}{:02x}{:02x}",
+        format!(
+            "#{:02x}{:02x}{:02x}",
             (r * 255.0) as u8,
             (g * 255.0) as u8,
             (b * 255.0) as u8
@@ -191,7 +190,7 @@ pub fn check_calendar_permission() -> Result<bool, String> {
         let status = f(cls, sel_reg("authorizationStatusForEntityType:"), 0);
 
         match status {
-            3 | 4 => Ok(true),  // authorized or fullAccess
+            3 | 4 => Ok(true), // authorized or fullAccess
             0 => {
                 // Not determined — request access now
                 let store = msg_id!(msg_id!(cls, "alloc"), "init");
@@ -280,7 +279,8 @@ pub fn fetch_events(
         let all_count = msg_usize!(all_cals, "count");
 
         // Also build a map of calendar colors
-        let mut cal_colors: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut cal_colors: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
 
         for i in 0..all_count {
             let f: unsafe extern "C" fn(Id, Sel, usize) -> Id =
@@ -295,8 +295,13 @@ pub fn fetch_events(
         }
 
         // Create predicate: predicateForEventsWithStartDate:endDate:calendars:
-        let predicate = msg_id!(store, "predicateForEventsWithStartDate:endDate:calendars:",
-            start_nsdate, end_nsdate, cal_array);
+        let predicate = msg_id!(
+            store,
+            "predicateForEventsWithStartDate:endDate:calendars:",
+            start_nsdate,
+            end_nsdate,
+            cal_array
+        );
 
         if predicate.is_null() {
             msg_id!(cal_array, "release");
@@ -329,7 +334,11 @@ pub fn fetch_events(
             let location = {
                 let loc = msg_id!(ev, "location");
                 let s = from_nsstring(loc);
-                if s.is_empty() { None } else { Some(s) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
             };
             let url = {
                 let url_obj = msg_id!(ev, "URL");
@@ -337,25 +346,44 @@ pub fn fetch_events(
                     None
                 } else {
                     let s = from_nsstring(msg_id!(url_obj, "absoluteString"));
-                    if s.is_empty() { None } else { Some(s) }
+                    if s.is_empty() {
+                        None
+                    } else {
+                        Some(s)
+                    }
                 }
             };
             let notes = {
                 let n = msg_id!(ev, "notes");
                 let s = from_nsstring(n);
-                if s.is_empty() { None } else { Some(s) }
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
             };
             let cal = msg_id!(ev, "calendar");
             let cal_name = from_nsstring(msg_id!(cal, "title"));
-            let cal_color = cal_colors.get(&cal_name).cloned().unwrap_or_else(|| "#888888".to_string());
+            let cal_color = cal_colors
+                .get(&cal_name)
+                .cloned()
+                .unwrap_or_else(|| "#888888".to_string());
 
             result.push(CalendarEvent {
                 id: event_id,
                 title,
                 calendar_name: cal_name,
                 calendar_color: cal_color,
-                start_date: if is_all_day { nsdate_to_local_date_string(sd) } else { nsdate_to_iso(sd) },
-                end_date:   if is_all_day { nsdate_to_local_date_string(ed) } else { nsdate_to_iso(ed) },
+                start_date: if is_all_day {
+                    nsdate_to_local_date_string(sd)
+                } else {
+                    nsdate_to_iso(sd)
+                },
+                end_date: if is_all_day {
+                    nsdate_to_local_date_string(ed)
+                } else {
+                    nsdate_to_iso(ed)
+                },
                 is_all_day,
                 location,
                 url,
@@ -460,7 +488,13 @@ pub fn delete_event(event_id: String) -> Result<(), String> {
         let f: unsafe extern "C" fn(Id, Sel, Id, isize, *mut Id) -> BOOL =
             std::mem::transmute(objc_msgSend as *const ());
         let mut error: Id = std::ptr::null_mut();
-        let success = f(store, sel_reg("removeEvent:span:error:"), event, 0, &mut error);
+        let success = f(
+            store,
+            sel_reg("removeEvent:span:error:"),
+            event,
+            0,
+            &mut error,
+        );
         if success == 0 {
             let err_msg = if !error.is_null() {
                 from_nsstring(msg_id!(error, "localizedDescription"))
@@ -480,7 +514,10 @@ unsafe fn iso_to_nsdate(iso: &str) -> Result<Id, String> {
     // Strip fractional seconds (.000) — NSISO8601DateFormatter can't parse them by default
     // "2026-02-15T00:00:00.000Z" → "2026-02-15T00:00:00Z"
     let clean = if let Some(dot) = iso.rfind('.') {
-        if let Some(rest) = iso.get(dot..).and_then(|s| s.find(|c: char| !c.is_ascii_digit() && c != '.').map(|i| &s[i..])) {
+        if let Some(rest) = iso.get(dot..).and_then(|s| {
+            s.find(|c: char| !c.is_ascii_digit() && c != '.')
+                .map(|i| &s[i..])
+        }) {
             format!("{}{}", &iso[..dot], rest)
         } else {
             iso.to_string()
@@ -497,7 +534,10 @@ unsafe fn iso_to_nsdate(iso: &str) -> Result<Id, String> {
     msg_id!(ns_str, "release");
     msg_id!(formatter, "release");
     if date.is_null() {
-        return Err(format!("Failed to parse date: {} (cleaned: {})", iso, clean));
+        return Err(format!(
+            "Failed to parse date: {} (cleaned: {})",
+            iso, clean
+        ));
     }
     Ok(date)
 }

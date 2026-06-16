@@ -65,9 +65,16 @@ function SettingRow({
   );
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  return 'Notification failed.';
+}
+
 export function NotificationSettings() {
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [testSent, setTestSent] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<NotificationPrefs>('get_notification_prefs')
@@ -105,11 +112,14 @@ export function NotificationSettings() {
 
   const handleSendTest = async () => {
     try {
+      setTestError(null);
       await invoke('send_test_notification');
       setTestSent(true);
       setTimeout(() => setTestSent(false), 3000);
     } catch (e) {
       console.error('[notifications] test notification failed', e);
+      setTestSent(false);
+      setTestError(getErrorMessage(e));
     }
   };
 
@@ -117,14 +127,14 @@ export function NotificationSettings() {
 
   return (
     <div className="px-7 py-6 space-y-8">
-      {/* Menu Bar */}
+      {/* System Tray */}
       <div>
         <h3 className="text-[10px] font-semibold text-[#B0B0B0] dark:text-[#555] uppercase tracking-wider mb-3">
-          Menu Bar
+          System Tray
         </h3>
         <SettingRow
-          label="Show menu bar icon"
-          detail="Click the icon in the macOS menu bar to open a quick task panel"
+          label="Show system tray icon"
+          detail="Click the icon in the system tray to open a quick task panel"
           checked={prefs.trayEnabled}
           onToggle={handleTrayToggle}
         />
@@ -216,6 +226,11 @@ export function NotificationSettings() {
         >
           {testSent ? 'Sent!' : 'Send test notification'}
         </button>
+        {testError && (
+          <p role="alert" className="text-[12px] text-danger mt-2">
+            {testError}
+          </p>
+        )}
       </div>
     </div>
   );

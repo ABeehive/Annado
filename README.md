@@ -1,6 +1,6 @@
 # Annado
 
-A clean task manager for macOS that lives on (?) your Obsidian vault, or markdown files. No proprietary database, no lock-in, it's all based on your own files. Designed with Obsidian in mind, but also works as a stand-alone app or on your folder with markdown files. 
+A clean task manager for macOS and Windows that lives on your Obsidian vault, or markdown files. No proprietary database, no lock-in, it's all based on your own files. Designed with Obsidian in mind, but also works as a stand-alone app or on your folder with markdown files.
 
 ![Today view](docs/images/today.png)
 
@@ -10,9 +10,20 @@ Your tasks stay as plain markdown in your Obsidian vault. Annado reads and write
 
 Bilingual: supports Dutch and English for natural language date input.
 
+## Platform Support
+
+- **macOS**: original supported desktop runtime. The native Calendar integration uses macOS Calendar/EventKit and remains macOS-only.
+- **Windows**: core Markdown task workflows have been verified on a Windows debug build, including first-run vault selection, vault scan, Quick Add, Quick Find, edit/delete/complete persistence, side panel, Agenda drag scheduling, restart persistence, notifications, tray behavior, and deep-link routing. Windows Calendar integration is currently unsupported and disabled with an in-app message.
+- **Linux**: not currently claimed as a verified runtime.
+
+The current Windows smoke artifact is the unsigned NSIS debug installer at
+`src-tauri/target/debug/bundle/nsis/Annado_0.1.2_x64-setup.exe`. Smoke evidence is recorded in
+`.project/projects/annado-windows-compatible/artifacts/windows-core-workflow-smoke3-result.txt`.
+The installer is suitable for local/CI verification only until Windows signing is configured.
+
 ## How It Works
 
-Annado treats your Obsidian vault as its database. It scans every `.md` file for markdown checkboxes (`- [ ]` / `- [x]`), parses inline annotations like `@when(...)`, `@due(...)`, and `[[WikiLinks]]`, and presents them in a task manager UI. Every edit you make in Annado is written straight back to the markdown files — no syncing, no export step, no sidecar database.
+Annado treats your Obsidian vault as its database. It scans every `.md` file for markdown checkboxes marked with `#task`, parses inline annotations like `@when(...)`, `@due(...)`, and `[[WikiLinks]]`, and presents them in a task manager UI. Every edit you make in Annado is written straight back to the markdown files — no syncing, no export step, no sidecar database.
 
 See it in action — capturing a task in an Obsidian daily note during a meeting, then editing it in Annado:
 
@@ -29,19 +40,19 @@ https://github.com/user-attachments/assets/343a7135-a676-4ebd-99f5-dae0626fe181
 
 Annado has 12 views, each accessible from the sidebar or via keyboard shortcut:
 
-| View | Shortcut | What's in it |
+| View | Shortcut (macOS / Windows) | What's in it |
 |---|---|---|
-| **Inbox** | `Cmd+1` | Unscheduled tasks awaiting processing |
-| **Today** | `Cmd+2` | Tasks scheduled for today |
-| **Agenda** | `Cmd+3` | Day/week timeline with drag-to-schedule |
-| **Upcoming** | `Cmd+4` | Tasks scheduled for future dates |
-| **Anytime** | `Cmd+5` | Flexible-time tasks with no specific date |
-| **Someday** | `Cmd+6` | Backlog and long-term tasks |
-| **Logbook** | `Cmd+7` | Completed tasks history |
-| **Recurring** | `Cmd+8` | Recurring task templates and instances |
-| **Wrapped** | `Cmd+9` | Spotify Wrapped-style year-in-review |
-| **Added Today** | `Cmd+0` | Tasks created today |
-| **Review** | `Cmd+R` | Guided 5-step weekly review workflow |
+| **Inbox** | `Cmd+1` / `Ctrl+1` | Unscheduled tasks awaiting processing |
+| **Today** | `Cmd+2` / `Ctrl+2` | Tasks scheduled for today |
+| **Agenda** | `Cmd+3` / `Ctrl+3` | Day/week timeline with drag-to-schedule |
+| **Upcoming** | `Cmd+4` / `Ctrl+4` | Tasks scheduled for future dates |
+| **Anytime** | `Cmd+5` / `Ctrl+5` | Flexible-time tasks with no specific date |
+| **Someday** | `Cmd+6` / `Ctrl+6` | Backlog and long-term tasks |
+| **Logbook** | `Cmd+7` / `Ctrl+7` | Completed tasks history |
+| **Recurring** | `Cmd+8` / `Ctrl+8` | Recurring task templates and instances |
+| **Wrapped** | `Cmd+9` / `Ctrl+9` | Spotify Wrapped-style year-in-review |
+| **Added Today** | `Cmd+0` / `Ctrl+0` | Tasks created today |
+| **Review** | `Cmd+R` / `Ctrl+R` | Guided 5-step weekly review workflow |
 | **Smart Lists** | sidebar | Custom-filtered task collections |
 
 ![Anytime view with project groups](docs/images/anytime.png)
@@ -55,10 +66,12 @@ More screenshots of every view and panel: **[visual tour](docs/tour.md)**.
 Annado reads and writes this inline markdown format:
 
 ```markdown
-- [ ] Task title @when(tomorrow) @time(09:00) @duration(1h30m) [[Project]] !(1) #tag @due(2025-03-01)
+- [ ] Task title @when(tomorrow) @time(09:00) @duration(1h30m) [[Project]] !(1) #task #tag @due(2025-03-01)
     Notes go here, indented 4 spaces
     - [x] Checklist sub-item
 ```
+
+By default, only top-level checkboxes with `#task` become Annado tasks. You can change the marker tag, or leave it blank to import every top-level checkbox, in Settings -> General -> Task Parsing.
 
 | Field | Example | Description |
 |---|---|---|
@@ -67,13 +80,16 @@ Annado reads and writes this inline markdown format:
 | `@duration(...)` | `@duration(1h30m)` | Estimated duration |
 | `@due(...)` | `@due(2025-03-01)` | Deadline |
 | `!(1-3)` | `!(1)` | Priority (1 = highest) |
+| `#task` | `#task` | Default Annado task marker |
 | `#tag` | `#work` | Tag |
 | `[[WikiLink]]` | `[[Project Name]]` | Project or person link |
 | `@recurring(id)` | `@recurring(abc123)` | Recurring template reference |
 | `@created(date)` | `@created(2025-02-14)` | Creation date |
 | `@completed(date)` | `@completed(2025-02-16)` | Completion date |
 
-Checklist sub-items (`- [ ] sub-task`) can be toggled directly in Annado — the change persists to the markdown file.
+Annado also reads Obsidian Tasks emoji fields: scheduled `⏳ YYYY-MM-DD`, start `🛫 YYYY-MM-DD`, due `📅 YYYY-MM-DD`, created `➕ YYYY-MM-DD`, done `✅ YYYY-MM-DD`, cancelled `❌ YYYY-MM-DD`, and priority `🔺` / `⏫` / `🔼` / `🔽` / `⏬`.
+
+Checklist sub-items (`- [ ] sub-task`) under a task item can be toggled directly in Annado — the change persists to the markdown file. They do not need their own marker tag.
 
 ![Expanded task with a checklist](docs/images/checklist.png)
 
@@ -150,6 +166,7 @@ If you prefer folder-based grouping over explicit links, configure an **Areas pa
 ### Tags
 
 - Add tags with `#tagname` in the task line.
+- The configured task marker tag defaults to `#task` and is not shown as a normal tag.
 - Tags are color-coded (colors persist per tag, customizable by right-clicking).
 - Filter the current view by clicking a tag in the sidebar.
 
@@ -174,7 +191,7 @@ Smart Lists are saved custom filters, accessible from the sidebar with a custom 
 - **Tag**: a specific tag
 - **Age**: older than N days
 
-Create a Smart List via the `+` button in the sidebar Smart Lists section, or by pressing `Cmd+Shift+L`. Right-click a Smart List to edit or delete it.
+Create a Smart List via the `+` button in the sidebar Smart Lists section. Right-click a Smart List to edit or delete it.
 
 ![Smart List editor with combined filters](docs/images/smart-list-editor.png)
 
@@ -188,9 +205,9 @@ Recurring tasks are defined as template files in your configured recurring-templ
 - **Recurrence type**: Fixed interval (every N days/weeks/months/years) or After completion (reschedule N days after marking done)
 - **Start date**, project, and priority
 
-The **Recurring** view (`Cmd+8`) shows all templates. Click a template to see its pending instances. Instances are generated automatically from the template definition.
+The **Recurring** view (`Cmd+8` on macOS, `Ctrl+8` on Windows) shows all templates. Click a template to see its pending instances. Instances are generated automatically from the template definition.
 
-Create or edit templates via `Cmd+Shift+R` or the `+` button in the Recurring view.
+Create or edit templates via `Cmd+Shift+R` on macOS, `Ctrl+Shift+R` on Windows, or the `+` button in the Recurring view.
 
 ![Recurring task editor with fixed-interval and after-completion modes](docs/images/recurring-editor.png)
 
@@ -198,7 +215,7 @@ Create or edit templates via `Cmd+Shift+R` or the `+` button in the Recurring vi
 
 ## Agenda
 
-The Agenda view (`Cmd+3`) is a time-blocking timeline:
+The Agenda view (`Cmd+3` on macOS, `Ctrl+3` on Windows) is a time-blocking timeline:
 
 ![Agenda week view with time blocks, calendar events, and work schedule](docs/images/agenda-week.png)
 
@@ -209,8 +226,8 @@ The Agenda view (`Cmd+3`) is a time-blocking timeline:
 - **Unscheduled tasks panel** on the side — drag into the timeline or use Auto Schedule
 - **Auto-scheduling**: places unscheduled tasks into available gaps respecting your work schedule, breaks, and blocking calendar events
 - **Reschedule suggestions**: when you drag a task off its slot, Annado suggests the next 3 available slots across upcoming days
-- **Calendar events** overlay inline (all-day events at the top, timed events in the timeline)
-- **Calendar blocking**: mark specific calendars as "blocks auto-scheduling" in Settings so events are treated as busy time
+- **Calendar events** overlay inline on macOS (all-day events at the top, timed events in the timeline)
+- **Calendar blocking** on macOS: mark specific calendars as "blocks auto-scheduling" in Settings so events are treated as busy time
 
 Set a task's time with `@time(HH:MM)` or by dragging it to a slot. Set duration with `@duration(...)` or by resizing the block.
 
@@ -218,7 +235,7 @@ Set a task's time with `@time(HH:MM)` or by dragging it to a slot. Set duration 
 
 ## Review
 
-The Review workflow (`Cmd+R`) walks you through a structured 5-step weekly review:
+The Review workflow (`Cmd+R` on macOS, `Ctrl+R` on Windows) walks you through a structured 5-step weekly review:
 
 1. **Process your inbox** — review and schedule unscheduled tasks
 2. **Handle overdue tasks** — reschedule or complete tasks past their scheduled date
@@ -234,7 +251,7 @@ Each step shows a progress bar and task cards with inline actions (schedule, com
 
 ## Wrapped
 
-The Wrapped view (`Cmd+9`) is a Spotify Wrapped-style year-in-review. Select a time period (week, month, or year) and step through a deck of animated slides (which ones appear depends on your data):
+The Wrapped view (`Cmd+9` on macOS, `Ctrl+9` on Windows) is a Spotify Wrapped-style year-in-review. Select a time period (week, month, or year) and step through a deck of animated slides (which ones appear depends on your data):
 
 ![Wrapped year heatmap slide](docs/images/wrapped-heatmap.png)
 
@@ -255,17 +272,17 @@ The Wrapped view (`Cmd+9`) is a Spotify Wrapped-style year-in-review. Select a t
 
 ## Quick Add & Quick Find
 
-### Quick Add (`Cmd+N`)
+### Quick Add (`Cmd+N` on macOS, `Ctrl+N` on Windows)
 
 Rapid task capture from anywhere in the app. Respects the current view context (e.g., opening Quick Add in a project view pre-fills that project). Supports all inline annotations and date hints in titles.
 
-**System-wide**: `Cmd+Shift+Space` opens Quick Add even when Annado is in the background.
+**System-wide**: `Cmd+Shift+Space` on macOS, or `Ctrl+Alt+Space` on Windows, opens Quick Add even when Annado is in the background.
 
 **Where new tasks land**: tasks created in Annado are appended to today's daily note, which is created automatically (with frontmatter and a `## Tasks` heading) if it doesn't exist yet. In an Obsidian vault, Annado reads your existing Daily Notes plugin settings to find the right folder and filename format; otherwise the folder and format configured in Settings → Folder Paths are used.
 
 ![Quick Add with scheduling, project, priority, and duration controls](docs/images/quick-add.png)
 
-### Quick Find (`Cmd+F` or type any letter)
+### Quick Find (`Cmd+F` on macOS, `Ctrl+F` on Windows, or type any letter)
 
 Universal search across tasks, projects, people, views, and tags. Shows recent items when empty. Results update as you type.
 
@@ -275,7 +292,7 @@ Universal search across tasks, projects, people, views, and tags. Shows recent i
 
 ## Bulk Operations
 
-Multi-select tasks with `Cmd+Click`. When multiple tasks are selected, a bulk-action toolbar appears at the bottom of the list:
+Multi-select tasks with `Cmd+Click` on macOS, or `Ctrl+Click` on Windows. When multiple tasks are selected, a bulk-action toolbar appears at the bottom of the list:
 
 - **Complete** all selected tasks
 - **Delete** all selected tasks
@@ -290,7 +307,7 @@ Multi-select tasks with `Cmd+Click`. When multiple tasks are selected, a bulk-ac
 
 ## Side Panel
 
-Open a second, independent task view alongside the main view with `Cmd+\`. The side panel:
+Open a second, independent task view alongside the main view with `Cmd+\` on macOS, or `Ctrl+\` on Windows. The side panel:
 
 - Has its own view selection, filtering, and task selection state
 - Supports drag-and-drop **from** and **to** the main panel
@@ -325,34 +342,33 @@ Supported parameters: `title`, `notes`, `when`, `project`.
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action |
-|---|---|
-| `Cmd+N` | Quick Add |
-| `Cmd+F` | Quick Find |
-| `Cmd+S` | Open When date picker |
-| `Cmd+D` | Open Deadline date picker |
-| `Cmd+T` | Schedule to Today |
-| `Cmd+K` | Toggle complete |
-| `Cmd+Backspace` | Delete task |
-| `Cmd+Shift+M` | Move to Project |
-| `Cmd+Shift+L` | New Smart List |
-| `Cmd+Shift+R` | New recurring template |
-| `Cmd+\` | Toggle side panel |
-| `Cmd+1` – `Cmd+6` | Switch view: Inbox → Someday |
-| `Cmd+7` | Logbook |
-| `Cmd+8` | Recurring |
-| `Cmd+9` | Wrapped |
-| `Cmd+0` | Added Today |
-| `Cmd+R` | Review |
-| `Cmd+,` | Open Settings |
-| `Cmd+Shift+Space` | Global Quick Add (system-wide) |
-| `Cmd+Shift+A` | Show/focus app (system-wide) |
-| `Ctrl+J` / `Ctrl+K` | Navigate tasks down / up |
-| `Enter` | Expand/collapse selected task |
-| `Escape` | Close modal / deselect |
-| Type any letter | Opens Quick Find with that character |
+| Action | macOS | Windows |
+|---|---|---|
+| Quick Add | `Cmd+N` | `Ctrl+N` |
+| Quick Find | `Cmd+F` | `Ctrl+F` |
+| Open When date picker | `Cmd+S` | `Ctrl+Shift+S` |
+| Open Deadline date picker | `Cmd+D` | `Ctrl+Shift+D` |
+| Schedule to Today | `Cmd+T` | `Ctrl+Shift+T` |
+| Toggle complete | `Cmd+K` | `Ctrl+Enter` |
+| Delete task | `Cmd+Backspace` | `Ctrl+Shift+Backspace` |
+| Move to Project | `Cmd+Shift+M` | `Ctrl+Shift+M` |
+| New recurring template | `Cmd+Shift+R` | `Ctrl+Shift+R` |
+| Toggle side panel | `Cmd+\` | `Ctrl+\` |
+| Switch view: Inbox through Someday | `Cmd+1` - `Cmd+6` | `Ctrl+1` - `Ctrl+6` |
+| Logbook | `Cmd+7` | `Ctrl+7` |
+| Recurring | `Cmd+8` | `Ctrl+8` |
+| Wrapped | `Cmd+9` | `Ctrl+9` |
+| Added Today | `Cmd+0` | `Ctrl+0` |
+| Review | `Cmd+R` | `Ctrl+R` |
+| Open Settings | `Cmd+,` | `Ctrl+,` |
+| Global Quick Add (system-wide) | `Cmd+Shift+Space` | `Ctrl+Alt+Space` |
+| Show/focus app (system-wide) | `Cmd+Shift+A` | `Ctrl+Alt+A` |
+| Navigate tasks down / up | `Ctrl+J` / `Ctrl+K` | `Ctrl+J` / `Ctrl+K` |
+| Expand/collapse selected task | `Enter` | `Enter` |
+| Close modal / deselect | `Escape` | `Escape` |
+| Open Quick Find from typing | Type any letter | Type any letter |
 
-Shortcuts marked *system-wide* work even when Annado is in the background. All customisable shortcuts can be rebound in **Settings → Keyboard Shortcuts**.
+Shortcuts marked *system-wide* work even when Annado is in the background. All customisable shortcuts can be rebound in **Settings → Keyboard Shortcuts**. Existing saved custom shortcuts remain valid.
 
 ---
 
@@ -367,7 +383,7 @@ Annado can remind you about deadlines without you having the app in front of you
 
 All notification types can be toggled individually, each with its own time, plus a master on/off switch and a test button (**Settings → Notifications**).
 
-There's also a **menu bar icon** (toggleable) with a quick task panel, and two system-wide shortcuts: `Cmd+Shift+Space` for Quick Add and `Cmd+Shift+A` to show/focus the app.
+There's also a **menu bar icon** on macOS, or a **tray icon** on Windows, with a quick task panel and two system-wide shortcuts: `Cmd+Shift+Space` / `Cmd+Shift+A` on macOS, or `Ctrl+Alt+Space` / `Ctrl+Alt+A` on Windows.
 
 ![Menu bar quick task panel](docs/images/menu-bar.png)
 
@@ -377,7 +393,7 @@ There's also a **menu bar icon** (toggleable) with a quick task panel, and two s
 
 Not every file in your vault should be scanned for tasks. There are two ways to exclude files:
 
-**From Settings** (`Cmd+,`) → **Excluded Files & Folders**
+**From Settings** (`Cmd+,` on macOS, `Ctrl+,` on Windows) → **Excluded Files & Folders**
 
 Add paths relative to the vault root. A trailing `/` excludes an entire directory; otherwise it targets a single file.
 
@@ -400,7 +416,7 @@ annado_exclude: true
 
 ## Settings
 
-Open Settings with `Cmd+,`. Five tabs:
+Open Settings with `Cmd+,` on macOS, or `Ctrl+,` on Windows. Five tabs:
 
 ### General
 
@@ -424,7 +440,7 @@ Open Settings with `Cmd+,`. Five tabs:
 | **Calendar** | Toggle macOS Calendar event display; per-calendar blocking toggle |
 | **Schedule** | Work days (per day on/off), start/end times, and named breaks with per-weekday selection |
 
-The work schedule drives Agenda auto-scheduling — tasks are only placed in open work hours, avoiding breaks and blocked calendar events.
+The work schedule drives Agenda auto-scheduling — tasks are only placed in open work hours, avoiding breaks and blocked calendar events. Calendar event import is macOS-only today; on Windows, Annado disables the Calendar integration and keeps task scheduling available without external calendar events.
 
 ### Shortcuts
 
@@ -434,7 +450,7 @@ View all fixed shortcuts and remap any customisable shortcut. Click a shortcut r
 
 | Section | What you can configure |
 |---|---|
-| **Menu bar** | Show/hide the menu bar (tray) icon |
+| **Menu bar / tray** | Show/hide the macOS menu bar or Windows tray icon |
 | **Notifications** | Master on/off; morning-of, day-before, and overdue-daily reminders, each with its own time |
 | **Launch banner** | Summary notification on app start |
 | **Test** | Send a test notification |
@@ -475,6 +491,25 @@ Tasks can live in *any* markdown file in the vault — Annado scans them all (mi
 
 ## Getting Started
 
+### Development prerequisites
+
+Annado is a Tauri 2 desktop app. For local development, install:
+
+- Node.js with npm
+- Rust via `rustup`
+- Platform desktop build tools
+
+On Windows, Tauri also requires:
+
+- Microsoft C++ Build Tools with the **Desktop development with C++** workload
+- Rust's MSVC toolchain (`rustup default stable-msvc`)
+- Microsoft Edge WebView2 Runtime
+
+WebView2 is already present on current Windows 10 and Windows 11 installations, but the Evergreen
+Runtime can be installed manually if needed. MSI builds require the Windows VBSCRIPT optional
+feature; Annado's first Windows installer target is NSIS, so WiX/MSI is not required for the first
+Windows artifact.
+
 ### 1. Install and run
 
 ```
@@ -488,7 +523,7 @@ On first launch Annado will ask you to pick a folder — point it at your Obsidi
 
 ### 3. Configure folder paths (optional)
 
-Annado looks for projects, people, and recurring task templates by matching folder names. Customise these patterns in **Settings** (`Cmd+,`) → **Folder Paths**.
+Annado looks for projects, people, and recurring task templates by matching folder names. Customise these patterns in **Settings** (`Cmd+,` on macOS, `Ctrl+,` on Windows) → **Folder Paths**.
 
 | Setting | Default | What it does |
 |---|---|---|
@@ -511,3 +546,22 @@ Annado looks for projects, people, and recurring task templates by matching fold
 ```
 npm run tauri build
 ```
+
+On Windows, the platform-specific `src-tauri/tauri.windows.conf.json` config builds the NSIS setup
+executable only. The installer uses Tauri's WebView2 `downloadBootstrapper` mode in silent mode, so
+the installer stays small and downloads WebView2 only when the runtime is missing or needs repair.
+No minimum WebView2 version is pinned because Annado does not currently depend on a known
+version-specific WebView2 feature.
+
+The verified Windows smoke artifact is currently
+`src-tauri/target/debug/bundle/nsis/Annado_0.1.2_x64-setup.exe`, produced by
+`npm run tauri -- bundle --debug --bundles nsis --ci --no-sign`. The Windows core workflow smoke
+evidence is in `.project/projects/annado-windows-compatible/artifacts/windows-core-workflow-smoke3-result.txt`.
+
+Windows signing is deferred for the first local/CI smoke artifact. Public Windows distribution must
+add a signing setup, for example `bundle.windows.signCommand` or certificate-based signing in the
+Windows bundle config, before treating the installer as a trusted release artifact.
+
+The Windows icon is `src-tauri/icons/icon.ico`; it includes the standard 16, 24, 32, 48, 64, and
+256px layers required by Tauri's Windows packaging guidance. The shared icon list in
+`src-tauri/tauri.conf.json` also keeps the PNG and macOS ICNS assets for other platforms.

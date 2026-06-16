@@ -10,6 +10,7 @@ import { DAY_START, DAY_END, PIXELS_PER_MINUTE, BLOCK_GAP_PX } from './constants
 import { formatTime, formatDuration } from './utils';
 import { InlineMarkdown } from '../../components/MarkdownNotesRenderer';
 import { getMeetingUrl } from './meetingUrl';
+import { getPrimaryModifierLabel, matchesPrimaryShortcut } from '../../utils/keybindings';
 
 const MIN_BLOCK_HEIGHT = 26;
 const MIN_DURATION = 15;
@@ -56,6 +57,7 @@ function BlockContextMenu({ block, clickX, clickY, isTask, isPinned, isEvent, ha
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<React.CSSProperties>({ top: clickY, left: clickX, visibility: 'hidden' });
+  const primaryShortcutLabel = getPrimaryModifierLabel();
 
   useEffect(() => {
     const el = menuRef.current;
@@ -80,9 +82,9 @@ function BlockContextMenu({ block, clickX, clickY, isTask, isPinned, isEvent, ha
   useEffect(() => {
     if (!isEvent) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey && e.key === 't') { e.preventDefault(); onCreateTask(); }
-      else if (e.metaKey && e.key === 'b') { e.preventDefault(); onToggleBlocking(); }
-      else if (e.metaKey && e.key === 'e') { e.preventDefault(); onEditEvent(); }
+      if (matchesPrimaryShortcut(e, 't')) { e.preventDefault(); onCreateTask(); }
+      else if (matchesPrimaryShortcut(e, 'b')) { e.preventDefault(); onToggleBlocking(); }
+      else if (matchesPrimaryShortcut(e, 'e')) { e.preventDefault(); onEditEvent(); }
       else if (e.key === 'Backspace') { e.preventDefault(); onDelete(); }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -129,18 +131,18 @@ function BlockContextMenu({ block, clickX, clickY, isTask, isPinned, isEvent, ha
         {/* Event-specific menu items */}
         {isEvent && (
           <>
-            <MenuItem dot="#5C6BC0" label="Create task" shortcut="⌘T" onClick={onCreateTask} />
+            <MenuItem dot="#5C6BC0" label="Create task" shortcut={`${primaryShortcutLabel}+T`} onClick={onCreateTask} />
             <MenuItem
               dot="#999"
               label={block.isBlocking ? 'Mark non-blocking' : 'Mark blocking'}
-              shortcut="⌘B"
+              shortcut={`${primaryShortcutLabel}+B`}
               onClick={onToggleBlocking}
             />
             {hasBlockingOverride && (
               <MenuItem dot="#999" label="Reset to calendar default" onClick={onResetBlocking} />
             )}
             <div className="border-t border-[#f0eeeb] dark:border-[#3A3A3A]" />
-            <MenuItem dot="#999" label="Edit event" shortcut="⌘E" onClick={onEditEvent} />
+            <MenuItem dot="#999" label="Edit event" shortcut={`${primaryShortcutLabel}+E`} onClick={onEditEvent} />
             <MenuItem dot="#E53935" label="Delete" shortcut="Del" red onClick={onDelete} />
           </>
         )}
@@ -302,7 +304,11 @@ export function TimeBlock({ block, columnOffset = 0, columnWidth = '100%', overl
 
   const handleEditEvent = async () => {
     if (block.event) {
-      await invoke('open_calendar_at_date', { date: block.event.startDate });
+      try {
+        await invoke('open_calendar_at_date', { date: block.event.startDate });
+      } catch (e) {
+        console.error('Failed to open calendar event:', e);
+      }
     }
     setShowMenu(null);
   };

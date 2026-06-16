@@ -80,7 +80,8 @@ collapse so the close animation still plays.
 
 **Manual test checklist** (no automated UI tests cover this):
 expand/collapse animation, title autofocus on expand, click-outside saves &
-collapses, ⌘S/⌘D open the When/Deadline pickers, Enter collapses, keyboard nav
+collapses, When/Deadline shortcuts open their pickers (`Cmd+S`/`Cmd+D` on macOS,
+`Ctrl+Shift+S`/`Ctrl+Shift+D` on Windows), Enter collapses, keyboard nav
 keeps the selected row in view, and the check-off linger animation.
 
 ### PR4 — content-visibility for off-screen rows
@@ -101,7 +102,8 @@ change. PR5 (`@tanstack/react-virtual`) is the heavier follow-up that also
 removes the nodes themselves.
 
 **Verify visually:** scroll a ~3000-item inbox (should stay smooth), fast-scroll
-for any scrollbar jump, and confirm ⌘F / keyboard-nav scroll-into-view still
+for any scrollbar jump, and confirm Quick Find (`Cmd+F` on macOS, `Ctrl+F` on
+Windows) / keyboard-nav scroll-into-view still
 reach off-screen rows.
 
 ### PR5 — true windowing with @tanstack/react-virtual
@@ -133,7 +135,8 @@ PR4 first — if it's enough, this PR can wait.
 **⚠️ Manual test checklist** (jsdom can't exercise windowing, so tests don't
 cover it): smooth scroll through ~3000 items; expand/collapse re-measures and
 shifts rows below; drag-and-drop within the list + auto-scroll near edges;
-keyboard nav (↑/↓, ⌃J/⌃K) scrolls off-screen selections into view; ⌘S/⌘D on a
+keyboard nav (arrow keys or `Ctrl+J`/`Ctrl+K`) scrolls off-screen selections into
+view; When/Deadline shortcuts on a
 selected row; switching views resets cleanly; the "New To-Do" footer in
 project/person views.
 

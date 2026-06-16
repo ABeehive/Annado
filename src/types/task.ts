@@ -204,6 +204,7 @@ export interface FolderPaths {
   personsPattern: string;
   dailyNotesFolder: string;
   dailyNotesFormat: string;
+  taskMarkerTag: string;
 }
 
 export type EditorType = 'system' | 'vscode' | 'sublime' | 'custom';

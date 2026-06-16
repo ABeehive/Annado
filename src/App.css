@@ -32,9 +32,27 @@ html, body, #root {
   overflow: hidden;
 }
 
-/* macOS title bar drag region */
+/* macOS overlay titlebar spacing and drag regions. Windows/Linux use native chrome, so
+   the extra traffic-light padding and webview drag regions are disabled there. */
 .titlebar-drag {
   -webkit-app-region: drag;
+}
+
+:root:not([data-platform="macos"]) .titlebar-drag {
+  -webkit-app-region: no-drag;
+}
+
+:root:not([data-platform="macos"]) .titlebar-spacer {
+  height: 0 !important;
+}
+
+:root:not([data-platform="macos"]) .titlebar-header {
+  padding-top: 1rem !important;
+  padding-left: 1.5rem !important;
+}
+
+:root:not([data-platform="macos"]) .titlebar-header-compact {
+  padding-top: 0.75rem !important;
 }
 
 /* Make interactive elements not draggable */

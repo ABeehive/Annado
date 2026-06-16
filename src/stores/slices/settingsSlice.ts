@@ -14,6 +14,7 @@ const DEFAULT_FOLDER_PATHS: FolderPaths = {
   personsPattern: 'Persons',
   dailyNotesFolder: '00. Daily Notes',
   dailyNotesFormat: 'YYYY/MM-MMMM/YYYY-MM-DD',
+  taskMarkerTag: 'task',
 };
 
 function loadPersistedSettings() {
@@ -134,7 +135,7 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
     try {
       const folderPaths = await invoke<FolderPaths>('get_folder_paths');
       if (_vaultVersion !== v) return;
-      set({ folderPaths });
+      set({ folderPaths: { ...DEFAULT_FOLDER_PATHS, ...folderPaths } });
     } catch (error) {
       if (_vaultVersion !== v) return;
       set({ error: String(error) });
@@ -144,7 +145,7 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
   setFolderPaths: async (folderPaths: FolderPaths) => {
     try {
       const tasks = await invoke<Task[]>('set_folder_paths', { folderPaths });
-      set({ tasks, folderPaths });
+      set({ tasks, folderPaths: { ...DEFAULT_FOLDER_PATHS, ...folderPaths } });
       get().fetchProjects();
       get().fetchPeople();
       get().fetchRecurringTemplates();

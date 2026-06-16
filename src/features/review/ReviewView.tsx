@@ -7,6 +7,7 @@ import { InlineMarkdown } from '../../components/MarkdownNotesRenderer';
 import { useWikilinkProps } from '../../hooks/useWikilinkProps';
 import { formatDateForDisplay, formatDateForStorage, getToday } from '../../utils/dates';
 import { openInEditor, editorLabel } from '../../utils/openInEditor';
+import { hasAnyShortcutModifier, KEYBINDING_DEFAULTS, matchesKeybinding } from '../../utils/keybindings';
 
 const STEPS = [
   { title: 'Process your inbox',   empty: 'Inbox is empty' },
@@ -650,9 +651,10 @@ export function ReviewView() {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const { keybindings } = useTaskStore.getState();
 
-      // Cmd+K — complete task (steps 0–2)
-      if (e.metaKey && !e.shiftKey && !e.altKey && e.key === 'k' && step <= 2 && currentItem) {
+      // Complete task uses the active platform default or the user's custom binding.
+      if (matchesKeybinding(e, keybindings.completeTask || KEYBINDING_DEFAULTS.completeTask) && step <= 2 && currentItem) {
         e.preventDefault();
         toggleTaskComplete((currentItem as Task).id);
         setSchedulingTask(null);
@@ -660,7 +662,7 @@ export function ReviewView() {
         return;
       }
 
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (hasAnyShortcutModifier(e)) return;
 
       if (!currentItem) {
         if (e.key === 'Escape') setCurrentView('today');
@@ -771,7 +773,7 @@ export function ReviewView() {
     <div className="flex-1 flex flex-col min-w-0 bg-[#F8F7F6] dark:bg-[#1E1E1E] overflow-hidden">
 
       {/* Header */}
-      <div className="pl-[52px] pr-6 pt-10 pb-2 titlebar-drag flex-shrink-0 flex items-center justify-between">
+      <div className="pl-[52px] pr-6 pt-10 pb-2 titlebar-drag titlebar-header flex-shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <svg className="w-8 h-8 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="1.5">
             <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2" strokeLinecap="round" />

@@ -1,4 +1,7 @@
-use crate::parser::{self, derive_project_name, derive_project_name_with_pattern, extract_wikilinks, Task, WhenValue, RecurringTemplate, RecurrenceType, IntervalUnit};
+use crate::parser::{
+    self, derive_project_name, derive_project_name_with_pattern, extract_wikilinks, IntervalUnit,
+    RecurrenceType, RecurringTemplate, Task, WhenValue,
+};
 use chrono::{Local, Months, NaiveDate};
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use parking_lot::RwLock;
@@ -11,9 +14,18 @@ use std::sync::Arc;
 use std::thread;
 use walkdir::WalkDir;
 
-fn default_areas_pattern() -> String { "Areas".to_string() }
-fn default_daily_notes_folder() -> String { "00. Daily Notes".to_string() }
-fn default_daily_notes_format() -> String { "YYYY/MM-MMMM/YYYY-MM-DD".to_string() }
+fn default_areas_pattern() -> String {
+    "Areas".to_string()
+}
+fn default_daily_notes_folder() -> String {
+    "00. Daily Notes".to_string()
+}
+fn default_daily_notes_format() -> String {
+    "YYYY/MM-MMMM/YYYY-MM-DD".to_string()
+}
+fn default_task_marker_tag() -> String {
+    parser::default_task_marker_tag()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -27,6 +39,8 @@ pub struct FolderPaths {
     pub daily_notes_folder: String,
     #[serde(default = "default_daily_notes_format")]
     pub daily_notes_format: String,
+    #[serde(default = "default_task_marker_tag")]
+    pub task_marker_tag: String,
 }
 
 impl Default for FolderPaths {
@@ -38,6 +52,7 @@ impl Default for FolderPaths {
             persons_pattern: "Persons".to_string(),
             daily_notes_folder: default_daily_notes_folder(),
             daily_notes_format: default_daily_notes_format(),
+            task_marker_tag: default_task_marker_tag(),
         }
     }
 }
@@ -55,15 +70,15 @@ struct ObsidianDailyNotesConfig {
 fn moment_to_chrono(fmt: &str) -> String {
     let replacements: &[(&str, &str)] = &[
         ("YYYY", "%Y"),
-        ("YY",   "%y"),
+        ("YY", "%y"),
         ("MMMM", "%B"),
-        ("MMM",  "%b"),
-        ("MM",   "%m"),
-        ("M",    "%m"),
-        ("DD",   "%d"),
-        ("D",    "%d"),
+        ("MMM", "%b"),
+        ("MM", "%m"),
+        ("M", "%m"),
+        ("DD", "%d"),
+        ("D", "%d"),
         ("dddd", "%A"),
-        ("ddd",  "%a"),
+        ("ddd", "%a"),
     ];
     let mut result = fmt.to_string();
     for (token, chrono) in replacements {
@@ -89,7 +104,7 @@ pub struct ProjectMetadata {
     pub start_date: Option<String>,
     pub ranking: Option<String>,
     pub persons: Vec<String>,
-    pub up: Option<String>,  // Parent project from frontmatter
+    pub up: Option<String>, // Parent project from frontmatter
     pub milestones: Vec<Milestone>,
 }
 
@@ -121,12 +136,38 @@ pub struct PersonMetadata {
 }
 
 fn is_hidden_path(path: &Path) -> bool {
-    path.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+    path.components()
+        .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+}
+
+fn path_to_internal_string(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn path_to_vault_relative_internal(vault_root: &Path, file_path: &Path) -> String {
+    file_path
+        .strip_prefix(vault_root)
+        .map(path_to_internal_string)
+        .unwrap_or_else(|_| path_to_internal_string(file_path))
+}
+
+fn normalize_path_pattern(pattern: &str) -> String {
+    parser::normalize_internal_path(pattern)
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .to_string()
+}
+
+fn path_contains_pattern(path: &str, pattern: &str) -> bool {
+    let pattern = normalize_path_pattern(pattern);
+    !pattern.is_empty() && path.contains(&pattern)
 }
 
 /// For tasks with no project derived from a Projects folder, try to derive from an Areas folder.
 fn apply_areas_project(tasks: &mut [Task], areas_pattern: &str) {
-    if areas_pattern.is_empty() { return; }
+    if areas_pattern.is_empty() {
+        return;
+    }
     for task in tasks.iter_mut() {
         if task.projects.is_empty() {
             if let Some(area) = derive_project_name_with_pattern(&task.file_path, areas_pattern) {
@@ -136,7 +177,11 @@ fn apply_areas_project(tasks: &mut [Task], areas_pattern: &str) {
     }
 }
 
-fn resolve_wikilinks(tasks: &mut [Task], person_names: &std::collections::HashSet<String>, project_names: &std::collections::HashSet<String>) {
+fn resolve_wikilinks(
+    tasks: &mut [Task],
+    person_names: &std::collections::HashSet<String>,
+    project_names: &std::collections::HashSet<String>,
+) {
     for task in tasks.iter_mut() {
         // The title resolves both persons and projects.
         let wikilinks = extract_wikilinks(&task.title);
@@ -180,7 +225,10 @@ fn collect_wikilink_names(
     projects_pattern: &str,
     areas_pattern: &str,
     excluded_paths: &[String],
-) -> (std::collections::HashSet<String>, std::collections::HashSet<String>) {
+) -> (
+    std::collections::HashSet<String>,
+    std::collections::HashSet<String>,
+) {
     let mut person_names = std::collections::HashSet::new();
     let mut project_names = std::collections::HashSet::new();
     for entry in WalkDir::new(vault_root)
@@ -199,14 +247,20 @@ fn collect_wikilink_names(
         if Vault::is_path_excluded(file_path, vault_root, excluded_paths) {
             continue;
         }
-        let path_str = file_path.to_string_lossy();
+        let path_str = path_to_vault_relative_internal(vault_root, file_path);
         if let Some(name) = file_path.file_stem().and_then(|s| s.to_str()) {
             if !name.is_empty() && !name.starts_with('.') {
-                if path_str.contains(persons_pattern) && !name.contains(persons_pattern) {
+                if path_contains_pattern(&path_str, persons_pattern)
+                    && !name.contains(persons_pattern)
+                {
                     person_names.insert(name.to_string());
-                } else if path_str.contains(projects_pattern) && !name.contains(projects_pattern) {
+                } else if path_contains_pattern(&path_str, projects_pattern)
+                    && !name.contains(projects_pattern)
+                {
                     project_names.insert(name.to_string());
-                } else if !areas_pattern.is_empty() && path_str.contains(areas_pattern) && !name.contains(areas_pattern) {
+                } else if path_contains_pattern(&path_str, areas_pattern)
+                    && !name.contains(areas_pattern)
+                {
                     project_names.insert(name.to_string());
                 }
             }
@@ -275,7 +329,11 @@ impl Vault {
         }
     }
 
-    pub fn new_with_folder_paths(path: PathBuf, folder_paths: FolderPaths, is_obsidian_vault: bool) -> Self {
+    pub fn new_with_folder_paths(
+        path: PathBuf,
+        folder_paths: FolderPaths,
+        is_obsidian_vault: bool,
+    ) -> Self {
         Vault {
             path,
             folder_paths,
@@ -301,15 +359,31 @@ impl Vault {
     /// Validate that a file path is within the vault directory.
     /// Returns the path if valid, or an error if it escapes the vault.
     fn validate_path_in_vault(&self, file_path: &str) -> Result<std::path::PathBuf, String> {
-        let path = std::path::PathBuf::from(file_path);
-        let canonical_vault = self.path.canonicalize()
+        let path = self.resolve_app_path(file_path);
+        let canonical_vault = self
+            .path
+            .canonicalize()
             .map_err(|e| format!("Failed to resolve vault path: {}", e))?;
-        let canonical_file = path.canonicalize()
+        let canonical_file = path
+            .canonicalize()
             .map_err(|_| "File does not exist or path is invalid".to_string())?;
         if !canonical_file.starts_with(&canonical_vault) {
             return Err("Path is outside the vault".to_string());
         }
         Ok(canonical_file)
+    }
+
+    fn resolve_app_path(&self, file_path: &str) -> std::path::PathBuf {
+        let path = std::path::PathBuf::from(file_path);
+        if path.is_absolute() {
+            path
+        } else {
+            self.path.join(path)
+        }
+    }
+
+    fn app_path_for(&self, file_path: &Path) -> String {
+        path_to_vault_relative_internal(&self.path, file_path)
     }
 
     /// Parse YAML frontmatter from content. Returns (parsed YAML, body after frontmatter).
@@ -340,20 +414,30 @@ impl Vault {
 
     /// Check if a file path matches any exclusion entry.
     /// Handles both file paths (`Shopping List.md`) and folder prefixes (`Lists/`).
-    pub fn is_path_excluded(file_path: &Path, vault_root: &Path, excluded_paths: &[String]) -> bool {
+    pub fn is_path_excluded(
+        file_path: &Path,
+        vault_root: &Path,
+        excluded_paths: &[String],
+    ) -> bool {
         let relative = match file_path.strip_prefix(vault_root) {
-            Ok(r) => r.to_string_lossy().to_string(),
+            Ok(r) => path_to_internal_string(r),
             Err(_) => return false,
         };
         for pattern in excluded_paths {
+            let pattern = normalize_path_pattern(pattern);
+            if pattern.is_empty() {
+                continue;
+            }
+
             if pattern.ends_with('/') {
+                let folder = pattern.trim_end_matches('/');
                 // Folder prefix match
-                if relative.starts_with(pattern) || relative.starts_with(&pattern[..pattern.len() - 1]) {
+                if relative == folder || relative.starts_with(&format!("{}/", folder)) {
                     return true;
                 }
             } else {
                 // Exact file path match
-                if relative == *pattern {
+                if relative == pattern {
                     return true;
                 }
                 // Also match without .md extension
@@ -377,9 +461,11 @@ impl Vault {
 
         // Get valid persons and projects for wiki-link resolution
         let persons = self.get_all_persons();
-        let person_names: std::collections::HashSet<String> = persons.iter().map(|p| p.name.clone()).collect();
+        let person_names: std::collections::HashSet<String> =
+            persons.iter().map(|p| p.name.clone()).collect();
         let projects = self.get_all_projects();
-        let project_names: std::collections::HashSet<String> = projects.iter().map(|p| p.name.clone()).collect();
+        let project_names: std::collections::HashSet<String> =
+            projects.iter().map(|p| p.name.clone()).collect();
 
         for entry in WalkDir::new(&self.path)
             .follow_links(false)
@@ -396,8 +482,8 @@ impl Vault {
                 }
 
                 // Skip recurring-tasks folder (contains templates, not task instances)
-                let path_str = path.to_string_lossy();
-                if path_str.contains(&self.folder_paths.recurring_templates) {
+                let path_str = self.app_path_for(path);
+                if path_contains_pattern(&path_str, &self.folder_paths.recurring_templates) {
                     continue;
                 }
 
@@ -412,8 +498,13 @@ impl Vault {
                         continue;
                     }
 
-                    let file_path = path.to_string_lossy().to_string();
-                    let mut tasks = parser::parse_file(&content, &file_path, today);
+                    let file_path = self.app_path_for(path);
+                    let mut tasks = parser::parse_file_with_task_marker(
+                        &content,
+                        &file_path,
+                        today,
+                        &self.folder_paths.task_marker_tag,
+                    );
 
                     apply_areas_project(&mut tasks, &self.folder_paths.areas_pattern);
                     resolve_wikilinks(&mut tasks, &person_names, &project_names);
@@ -441,7 +532,10 @@ impl Vault {
     fn normalize_symbolic_dates(&self, tasks: &[Task], _today: NaiveDate) {
         for task in tasks {
             // Read the original file line to check for symbolic dates
-            if let Ok(content) = fs::read_to_string(&task.file_path) {
+            let Ok(native_path) = self.validate_path_in_vault(&task.file_path) else {
+                continue;
+            };
+            if let Ok(content) = fs::read_to_string(&native_path) {
                 let lines: Vec<&str> = content.lines().collect();
                 if task.line_number > 0 && task.line_number <= lines.len() {
                     let line = lines[task.line_number - 1];
@@ -463,15 +557,16 @@ impl Vault {
         self.tasks.read().get(id).cloned()
     }
 
-    pub fn update_task(&self, updated_task: Task) -> Result<(), String> {
+    pub fn update_task(&self, mut updated_task: Task) -> Result<(), String> {
         let today = Local::now().date_naive();
 
         // Validate file path is within vault
-        self.validate_path_in_vault(&updated_task.file_path)?;
+        let native_path = self.validate_path_in_vault(&updated_task.file_path)?;
+        updated_task.file_path = self.app_path_for(&native_path);
 
         // Read the file
-        let content = fs::read_to_string(&updated_task.file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let content =
+            fs::read_to_string(&native_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
         let lines: Vec<&str> = content.lines().collect();
 
@@ -488,11 +583,12 @@ impl Vault {
 
         let mut new_lines: Vec<String> = lines.iter().map(|s| s.to_string()).collect();
         let file_project = derive_project_name(&updated_task.file_path);
-        new_lines[line_index] = parser::format_task_line(
+        new_lines[line_index] = parser::format_task_line_with_task_marker(
             &updated_task,
             today,
             file_project.as_deref(),
             &project_names,
+            &self.folder_paths.task_marker_tag,
         );
 
         // Handle notes: find and replace existing notes below the task
@@ -549,7 +645,8 @@ impl Vault {
         // Insert new notes if present
         if !updated_task.notes.is_empty() {
             let indent_str = " ".repeat(notes_indent);
-            let note_lines: Vec<String> = updated_task.notes
+            let note_lines: Vec<String> = updated_task
+                .notes
                 .lines()
                 .map(|line| format!("{}{}", indent_str, line))
                 .collect();
@@ -563,8 +660,7 @@ impl Vault {
 
         // Write back to file
         let new_content = new_lines.join("\n");
-        fs::write(&updated_task.file_path, new_content)
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        fs::write(&native_path, new_content).map_err(|e| format!("Failed to write file: {}", e))?;
 
         // Update cache
         {
@@ -576,23 +672,29 @@ impl Vault {
     }
 
     pub fn toggle_checklist_item(&self, task_id: &str, item_index: usize) -> Result<Task, String> {
-        let task = self.get_task(task_id)
+        let task = self
+            .get_task(task_id)
             .ok_or_else(|| "Task not found".to_string())?;
 
         if item_index >= task.checklist.len() {
-            return Err(format!("Checklist index {} out of range (task has {} items)", item_index, task.checklist.len()));
+            return Err(format!(
+                "Checklist index {} out of range (task has {} items)",
+                item_index,
+                task.checklist.len()
+            ));
         }
 
         // Validate file path is within vault
-        self.validate_path_in_vault(&task.file_path)?;
+        let native_path = self.validate_path_in_vault(&task.file_path)?;
 
-        let content = fs::read_to_string(&task.file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let content =
+            fs::read_to_string(&native_path).map_err(|e| format!("Failed to read file: {}", e))?;
         let mut lines: Vec<String> = content.split('\n').map(String::from).collect();
 
         // line_number is 1-based
         let task_line_index = task.line_number.saturating_sub(1);
-        let task_indent = lines.get(task_line_index)
+        let task_indent = lines
+            .get(task_line_index)
             .map(|l| l.len() - l.trim_start().len())
             .unwrap_or(0);
 
@@ -611,7 +713,10 @@ impl Vault {
             }
 
             // Check if this is a checklist line
-            if trimmed.starts_with("- [x] ") || trimmed.starts_with("- [ ] ") || trimmed.starts_with("- [X] ") {
+            if trimmed.starts_with("- [x] ")
+                || trimmed.starts_with("- [ ] ")
+                || trimmed.starts_with("- [X] ")
+            {
                 if checklist_count == item_index {
                     target_line = Some(i);
                     break;
@@ -620,7 +725,8 @@ impl Vault {
             }
         }
 
-        let target = target_line.ok_or_else(|| format!("Could not find checklist item {} in file", item_index))?;
+        let target = target_line
+            .ok_or_else(|| format!("Could not find checklist item {} in file", item_index))?;
 
         // Toggle the checkbox on the target line
         let line = &lines[target];
@@ -635,12 +741,12 @@ impl Vault {
 
         // Write back to file
         let new_content = lines.join("\n");
-        fs::write(&task.file_path, new_content)
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        fs::write(&native_path, new_content).map_err(|e| format!("Failed to write file: {}", e))?;
 
         // Update the cached task's checklist
         let mut updated_task = task;
-        updated_task.checklist[item_index].completed = !updated_task.checklist[item_index].completed;
+        updated_task.checklist[item_index].completed =
+            !updated_task.checklist[item_index].completed;
         {
             let mut task_map = self.tasks.write();
             task_map.insert(updated_task.id.clone(), updated_task.clone());
@@ -649,22 +755,33 @@ impl Vault {
         Ok(updated_task)
     }
 
-    pub fn rename_checklist_item(&self, task_id: &str, item_index: usize, new_title: &str) -> Result<Task, String> {
-        let task = self.get_task(task_id)
+    pub fn rename_checklist_item(
+        &self,
+        task_id: &str,
+        item_index: usize,
+        new_title: &str,
+    ) -> Result<Task, String> {
+        let task = self
+            .get_task(task_id)
             .ok_or_else(|| "Task not found".to_string())?;
 
         if item_index >= task.checklist.len() {
-            return Err(format!("Checklist index {} out of range (task has {} items)", item_index, task.checklist.len()));
+            return Err(format!(
+                "Checklist index {} out of range (task has {} items)",
+                item_index,
+                task.checklist.len()
+            ));
         }
 
-        self.validate_path_in_vault(&task.file_path)?;
+        let native_path = self.validate_path_in_vault(&task.file_path)?;
 
-        let content = fs::read_to_string(&task.file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let content =
+            fs::read_to_string(&native_path).map_err(|e| format!("Failed to read file: {}", e))?;
         let mut lines: Vec<String> = content.split('\n').map(String::from).collect();
 
         let task_line_index = task.line_number.saturating_sub(1);
-        let task_indent = lines.get(task_line_index)
+        let task_indent = lines
+            .get(task_line_index)
             .map(|l| l.len() - l.trim_start().len())
             .unwrap_or(0);
 
@@ -680,7 +797,10 @@ impl Vault {
                 break;
             }
 
-            if trimmed.starts_with("- [x] ") || trimmed.starts_with("- [ ] ") || trimmed.starts_with("- [X] ") {
+            if trimmed.starts_with("- [x] ")
+                || trimmed.starts_with("- [ ] ")
+                || trimmed.starts_with("- [X] ")
+            {
                 if checklist_count == item_index {
                     target_line = Some(i);
                     break;
@@ -689,16 +809,20 @@ impl Vault {
             }
         }
 
-        let target = target_line.ok_or_else(|| format!("Could not find checklist item {} in file", item_index))?;
+        let target = target_line
+            .ok_or_else(|| format!("Could not find checklist item {} in file", item_index))?;
 
         let line = &lines[target];
         let indent = &line[..line.len() - line.trim_start().len()];
-        let prefix = if line.contains("- [ ] ") { "- [ ] " } else { "- [x] " };
+        let prefix = if line.contains("- [ ] ") {
+            "- [ ] "
+        } else {
+            "- [x] "
+        };
         lines[target] = format!("{}{}{}", indent, prefix, new_title);
 
         let new_content = lines.join("\n");
-        fs::write(&task.file_path, new_content)
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        fs::write(&native_path, new_content).map_err(|e| format!("Failed to write file: {}", e))?;
 
         let mut updated_task = task;
         updated_task.checklist[item_index].title = new_title.to_string();
@@ -711,21 +835,27 @@ impl Vault {
     }
 
     pub fn delete_checklist_item(&self, task_id: &str, item_index: usize) -> Result<Task, String> {
-        let task = self.get_task(task_id)
+        let task = self
+            .get_task(task_id)
             .ok_or_else(|| "Task not found".to_string())?;
 
         if item_index >= task.checklist.len() {
-            return Err(format!("Checklist index {} out of range (task has {} items)", item_index, task.checklist.len()));
+            return Err(format!(
+                "Checklist index {} out of range (task has {} items)",
+                item_index,
+                task.checklist.len()
+            ));
         }
 
-        self.validate_path_in_vault(&task.file_path)?;
+        let native_path = self.validate_path_in_vault(&task.file_path)?;
 
-        let content = fs::read_to_string(&task.file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let content =
+            fs::read_to_string(&native_path).map_err(|e| format!("Failed to read file: {}", e))?;
         let mut lines: Vec<String> = content.split('\n').map(String::from).collect();
 
         let task_line_index = task.line_number.saturating_sub(1);
-        let task_indent = lines.get(task_line_index)
+        let task_indent = lines
+            .get(task_line_index)
             .map(|l| l.len() - l.trim_start().len())
             .unwrap_or(0);
 
@@ -741,7 +871,10 @@ impl Vault {
                 break;
             }
 
-            if trimmed.starts_with("- [x] ") || trimmed.starts_with("- [ ] ") || trimmed.starts_with("- [X] ") {
+            if trimmed.starts_with("- [x] ")
+                || trimmed.starts_with("- [ ] ")
+                || trimmed.starts_with("- [X] ")
+            {
                 if checklist_count == item_index {
                     target_line = Some(i);
                     break;
@@ -750,12 +883,12 @@ impl Vault {
             }
         }
 
-        let target = target_line.ok_or_else(|| format!("Could not find checklist item {} in file", item_index))?;
+        let target = target_line
+            .ok_or_else(|| format!("Could not find checklist item {} in file", item_index))?;
         lines.remove(target);
 
         let new_content = lines.join("\n");
-        fs::write(&task.file_path, new_content)
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        fs::write(&native_path, new_content).map_err(|e| format!("Failed to write file: {}", e))?;
 
         let mut updated_task = task;
         updated_task.checklist.remove(item_index);
@@ -775,6 +908,7 @@ impl Vault {
 
         // Determine which file to write to
         let file_path = self.get_daily_note_path(today);
+        let app_file_path = self.app_path_for(&file_path);
 
         // Ensure the file exists
         self.ensure_daily_note_exists(&file_path, today)?;
@@ -788,7 +922,7 @@ impl Vault {
 
         // Create the task
         let task = Task {
-            id: Task::generate_id(&file_path.to_string_lossy(), new_line_number),
+            id: Task::generate_id(&app_file_path, new_line_number),
             title: title.to_string(),
             notes: String::new(),
             when: when.clone(),
@@ -798,7 +932,7 @@ impl Vault {
             completed: false,
             completed_date: None,
             created_date: Some(today.format("%Y-%m-%d").to_string()),
-            file_path: file_path.to_string_lossy().to_string(),
+            file_path: app_file_path.clone(),
             line_number: new_line_number,
             projects: Vec::new(),
             indent_level: 0,
@@ -810,20 +944,25 @@ impl Vault {
         };
 
         // Format and append to file
-        let file_project = derive_project_name(&file_path.to_string_lossy());
+        let file_project = derive_project_name(&app_file_path);
         // Get project names for format_task_line
         let projects = self.get_all_projects();
         let project_names: std::collections::HashSet<String> =
             projects.iter().map(|p| p.name.clone()).collect();
-        let task_line = parser::format_task_line(&task, today, file_project.as_deref(), &project_names);
+        let task_line = parser::format_task_line_with_task_marker(
+            &task,
+            today,
+            file_project.as_deref(),
+            &project_names,
+            &self.folder_paths.task_marker_tag,
+        );
         let new_content = if content.ends_with('\n') || content.is_empty() {
             format!("{}{}\n", content, task_line)
         } else {
             format!("{}\n{}\n", content, task_line)
         };
 
-        fs::write(&file_path, new_content)
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        fs::write(&file_path, new_content).map_err(|e| format!("Failed to write file: {}", e))?;
 
         // Add to cache
         {
@@ -843,10 +982,9 @@ impl Vault {
     fn get_daily_note_path(&self, date: NaiveDate) -> PathBuf {
         let (folder, format) = if self.is_obsidian_vault {
             match self.read_obsidian_daily_notes_config() {
-                Some(cfg) if !cfg.format.is_empty() => (
-                    cfg.folder.trim_end_matches('/').to_string(),
-                    cfg.format,
-                ),
+                Some(cfg) if !cfg.format.is_empty() => {
+                    (cfg.folder.trim_end_matches('/').to_string(), cfg.format)
+                }
                 _ => (
                     self.folder_paths.daily_notes_folder.clone(),
                     self.folder_paths.daily_notes_format.clone(),
@@ -882,8 +1020,7 @@ impl Vault {
             date.format("%A, %B %e, %Y")
         );
 
-        fs::write(path, frontmatter)
-            .map_err(|e| format!("Failed to create daily note: {}", e))?;
+        fs::write(path, frontmatter).map_err(|e| format!("Failed to create daily note: {}", e))?;
 
         Ok(())
     }
@@ -900,6 +1037,7 @@ impl Vault {
         let projects_pattern = self.folder_paths.projects_pattern.clone();
         let areas_pattern = self.folder_paths.areas_pattern.clone();
         let recurring_templates = self.folder_paths.recurring_templates.clone();
+        let task_marker_tag = self.folder_paths.task_marker_tag.clone();
         let excluded_paths = self.excluded_paths.clone();
 
         // Watcher thread: debounce a burst of events, then re-parse only the
@@ -915,8 +1053,13 @@ impl Vault {
             let mut pending_created: StdHashMap<String, Instant> = StdHashMap::new();
             let created_delay = Duration::from_secs(2);
 
-            let (mut person_names, mut project_names) =
-                collect_wikilink_names(&path, &persons_pattern, &projects_pattern, &areas_pattern, &excluded_paths);
+            let (mut person_names, mut project_names) = collect_wikilink_names(
+                &path,
+                &persons_pattern,
+                &projects_pattern,
+                &areas_pattern,
+                &excluded_paths,
+            );
 
             loop {
                 // Block until something changes, then drain everything that arrives
@@ -948,14 +1091,19 @@ impl Vault {
                 // Refresh wiki-link name sets only when a project/person/area file changed
                 let names_dirty = needs_full_rescan
                     || changed.iter().any(|p| {
-                        let s = p.to_string_lossy();
-                        s.contains(&persons_pattern)
-                            || s.contains(&projects_pattern)
-                            || (!areas_pattern.is_empty() && s.contains(&areas_pattern))
+                        let s = path_to_internal_string(p);
+                        path_contains_pattern(&s, &persons_pattern)
+                            || path_contains_pattern(&s, &projects_pattern)
+                            || path_contains_pattern(&s, &areas_pattern)
                     });
                 if names_dirty {
-                    let (pn, prn) =
-                        collect_wikilink_names(&path, &persons_pattern, &projects_pattern, &areas_pattern, &excluded_paths);
+                    let (pn, prn) = collect_wikilink_names(
+                        &path,
+                        &persons_pattern,
+                        &projects_pattern,
+                        &areas_pattern,
+                        &excluded_paths,
+                    );
                     person_names = pn;
                     project_names = prn;
                 }
@@ -972,18 +1120,22 @@ impl Vault {
                             changed.insert(entry.path().to_path_buf());
                         }
                     }
-                    let existing: StdHashSet<String> =
-                        changed.iter().map(|p| p.to_string_lossy().to_string()).collect();
-                    tasks_ref.write().retain(|_, t| existing.contains(&t.file_path));
+                    let existing: StdHashSet<String> = changed
+                        .iter()
+                        .map(|p| path_to_vault_relative_internal(&path, p))
+                        .collect();
+                    tasks_ref
+                        .write()
+                        .retain(|_, t| existing.contains(&t.file_path));
                 }
 
                 // Re-parse only the changed files and diff them into the cache
                 for file_path in &changed {
-                    let file_path_str = file_path.to_string_lossy().to_string();
+                    let file_path_str = path_to_vault_relative_internal(&path, file_path);
 
                     let parsed: Option<Vec<Task>> = if !file_path.exists()
                         || is_hidden_path(file_path)
-                        || file_path_str.contains(&recurring_templates)
+                        || path_contains_pattern(&file_path_str, &recurring_templates)
                         || Vault::is_path_excluded(file_path, &path, &excluded_paths)
                     {
                         None // deleted, moved away, or excluded: just drop its tasks
@@ -991,7 +1143,12 @@ impl Vault {
                         if Vault::has_annado_exclude(&content) {
                             None
                         } else {
-                            let mut tasks = parser::parse_file(&content, &file_path_str, today);
+                            let mut tasks = parser::parse_file_with_task_marker(
+                                &content,
+                                &file_path_str,
+                                today,
+                                &task_marker_tag,
+                            );
                             apply_areas_project(&mut tasks, &areas_pattern);
                             resolve_wikilinks(&mut tasks, &person_names, &project_names);
                             Some(tasks)
@@ -1053,7 +1210,9 @@ impl Vault {
                         .iter()
                         .filter(|(_, t)| now.duration_since(**t) >= created_delay)
                         .filter_map(|(id, _)| {
-                            cache.get(id).map(|t| (t.file_path.clone(), t.line_number, id.clone()))
+                            cache
+                                .get(id)
+                                .map(|t| (t.file_path.clone(), t.line_number, id.clone()))
                         })
                         .collect();
                     drop(cache);
@@ -1065,7 +1224,7 @@ impl Vault {
                         }
                         for (fp, lines) in &by_file {
                             append_marker_to_lines(
-                                Path::new(fp),
+                                &path.join(fp),
                                 lines,
                                 &format!("@created({})", today_str),
                             );
@@ -1252,7 +1411,11 @@ impl Vault {
                 // Remove [[ ]] wikilinks
                 let cleaned = s.trim_start_matches("[[").trim_end_matches("]]");
                 // Take only the last part after / (e.g., "01. Persons/Jane Doe" -> "Jane Doe")
-                let name = cleaned.rsplit('/').next().unwrap_or(cleaned);
+                let cleaned_path = parser::normalize_internal_path(cleaned);
+                let name = cleaned_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(cleaned_path.as_str());
                 // Remove any leading numbers like "01. "
                 let name = if let Some(idx) = name.find(". ") {
                     &name[idx + 2..]
@@ -1286,7 +1449,7 @@ impl Vault {
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
-            let path_str = path.to_string_lossy();
+            let path_str = self.app_path_for(path);
 
             // Skip hidden files/folders
             if is_hidden_path(path) {
@@ -1299,21 +1462,25 @@ impl Vault {
             }
 
             // Only process items inside a Projects or Areas folder
-            let in_projects = path_str.contains(projects_pattern.as_str());
-            let in_areas = !areas_pattern.is_empty() && path_str.contains(areas_pattern.as_str());
+            let in_projects = path_contains_pattern(&path_str, projects_pattern);
+            let in_areas = path_contains_pattern(&path_str, areas_pattern);
             if !in_projects && !in_areas {
                 continue;
             }
 
             // Use whichever pattern matched to find the root folder index
-            let active_pattern = if in_projects { projects_pattern.as_str() } else { areas_pattern.as_str() };
+            let active_pattern = if in_projects {
+                normalize_path_pattern(projects_pattern)
+            } else {
+                normalize_path_pattern(areas_pattern)
+            };
 
             // Find the Projects/Areas folder index in the path
             let parts: Vec<&str> = path_str.split('/').collect();
             let mut projects_idx: Option<usize> = None;
 
             for (i, part) in parts.iter().enumerate() {
-                if part.contains(active_pattern) && !part.ends_with(".md") {
+                if part.contains(active_pattern.as_str()) && !part.ends_with(".md") {
                     projects_idx = Some(i);
                     break;
                 }
@@ -1325,7 +1492,7 @@ impl Vault {
                     let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
                     // Skip the main Projects/Areas index file
-                    if file_name.contains(active_pattern) || file_name.starts_with('.') {
+                    if file_name.contains(active_pattern.as_str()) || file_name.starts_with('.') {
                         continue;
                     }
 
@@ -1355,7 +1522,7 @@ impl Vault {
 
                         projects.push(ProjectInfo {
                             name: file_name.to_string(),
-                            path: path_str.to_string(),
+                            path: path_str.clone(),
                             depth,
                             parent_folder,
                             metadata,
@@ -1376,6 +1543,7 @@ impl Vault {
         let mut persons: Vec<PersonInfo> = Vec::new();
         let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
         let persons_pattern = &self.folder_paths.persons_pattern;
+        let persons_pattern_normalized = normalize_path_pattern(persons_pattern);
 
         for entry in WalkDir::new(&self.path)
             .max_depth(3)
@@ -1384,7 +1552,7 @@ impl Vault {
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
-            let path_str = path.to_string_lossy();
+            let path_str = self.app_path_for(path);
 
             // Skip hidden files/folders
             if is_hidden_path(path) {
@@ -1397,7 +1565,7 @@ impl Vault {
             }
 
             // Only process items inside a Persons folder
-            if !path_str.contains(persons_pattern) {
+            if !path_contains_pattern(&path_str, persons_pattern) {
                 continue;
             }
 
@@ -1406,7 +1574,7 @@ impl Vault {
             let mut persons_idx: Option<usize> = None;
 
             for (i, part) in parts.iter().enumerate() {
-                if part.contains(persons_pattern) && !part.ends_with(".md") {
+                if part.contains(persons_pattern_normalized.as_str()) && !part.ends_with(".md") {
                     persons_idx = Some(i);
                     break;
                 }
@@ -1418,7 +1586,9 @@ impl Vault {
                     let file_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
 
                     // Skip index files or hidden files
-                    if file_name.contains(persons_pattern) || file_name.starts_with('.') {
+                    if file_name.contains(persons_pattern_normalized.as_str())
+                        || file_name.starts_with('.')
+                    {
                         continue;
                     }
 
@@ -1451,10 +1621,10 @@ impl Vault {
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
-            let path_str = path.to_string_lossy();
+            let path_str = path_to_vault_relative_internal(&self.path, path);
 
             // Only process items inside a Persons folder
-            if !path_str.contains(persons_pattern) {
+            if !path_contains_pattern(&path_str, persons_pattern) {
                 continue;
             }
 
@@ -1537,9 +1707,7 @@ impl Vault {
     fn extract_string_array(val: &serde_yml::Value) -> Vec<String> {
         match val {
             serde_yml::Value::Sequence(seq) => {
-                seq.iter()
-                    .filter_map(|v| Self::yaml_to_string(v))
-                    .collect()
+                seq.iter().filter_map(|v| Self::yaml_to_string(v)).collect()
             }
             serde_yml::Value::String(s) => {
                 // Single string - check if comma-separated
@@ -1569,7 +1737,8 @@ impl Vault {
         if trimmed.starts_with("[[") && trimmed.ends_with("]]") {
             let inner = &trimmed[2..trimmed.len() - 2];
             // Get the last part after any slashes (the actual name)
-            inner.rsplit('/').next().unwrap_or(inner).to_string()
+            let inner = parser::normalize_internal_path(inner);
+            inner.rsplit('/').next().unwrap_or(&inner).to_string()
         } else {
             trimmed.to_string()
         }
@@ -1600,11 +1769,11 @@ impl Vault {
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
-            let path_str = path.to_string_lossy();
+            let path_str = path_to_vault_relative_internal(&self.path, path);
 
             // Check if this is in a Projects or Areas folder
-            let in_projects = path_str.contains(projects_pattern.as_str());
-            let in_areas = !areas_pattern.is_empty() && path_str.contains(areas_pattern.as_str());
+            let in_projects = path_contains_pattern(&path_str, projects_pattern);
+            let in_areas = path_contains_pattern(&path_str, areas_pattern);
             if !in_projects && !in_areas {
                 continue;
             }
@@ -1638,8 +1807,13 @@ impl Vault {
     }
 
     /// Update project metadata in the project file's YAML frontmatter
-    pub fn update_project_metadata(&self, project_name: &str, metadata: &ProjectMetadata) -> Result<(), String> {
-        let project_file = self.find_project_file(project_name)
+    pub fn update_project_metadata(
+        &self,
+        project_name: &str,
+        metadata: &ProjectMetadata,
+    ) -> Result<(), String> {
+        let project_file = self
+            .find_project_file(project_name)
             .ok_or_else(|| format!("Could not find project file for: {}", project_name))?;
 
         let content = fs::read_to_string(&project_file)
@@ -1674,7 +1848,8 @@ impl Vault {
 
                     // Update persons
                     if !metadata.persons.is_empty() {
-                        let persons: Vec<serde_yml::Value> = metadata.persons
+                        let persons: Vec<serde_yml::Value> = metadata
+                            .persons
                             .iter()
                             .map(|p| serde_yml::Value::String(p.clone()))
                             .collect();
@@ -1716,7 +1891,8 @@ impl Vault {
             Self::set_yaml_field(&mut map, "up", &metadata.up);
 
             if !metadata.persons.is_empty() {
-                let persons: Vec<serde_yml::Value> = metadata.persons
+                let persons: Vec<serde_yml::Value> = metadata
+                    .persons
                     .iter()
                     .map(|p| serde_yml::Value::String(p.clone()))
                     .collect();
@@ -1759,13 +1935,20 @@ impl Vault {
     }
 
     /// Set or remove `annado_exclude: true` in a file's YAML frontmatter
-    pub fn set_annado_exclude_frontmatter(&self, relative_path: &str, exclude: bool) -> Result<(), String> {
+    pub fn set_annado_exclude_frontmatter(
+        &self,
+        relative_path: &str,
+        exclude: bool,
+    ) -> Result<(), String> {
         let file_path = self.path.join(relative_path);
 
         // Guard against path traversal
-        let canonical_vault = self.path.canonicalize()
+        let canonical_vault = self
+            .path
+            .canonicalize()
             .map_err(|e| format!("Failed to resolve vault path: {}", e))?;
-        let canonical_file = file_path.canonicalize()
+        let canonical_file = file_path
+            .canonicalize()
             .map_err(|_| "File does not exist or path is invalid".to_string())?;
         if !canonical_file.starts_with(&canonical_vault) {
             return Err("Path is outside the vault".to_string());
@@ -1776,8 +1959,8 @@ impl Vault {
             return Ok(());
         }
 
-        let content = fs::read_to_string(&file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let content =
+            fs::read_to_string(&file_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
         let new_content = if content.starts_with("---") {
             let rest = &content[3..];
@@ -1812,8 +1995,7 @@ impl Vault {
             return Ok(());
         };
 
-        fs::write(&file_path, new_content)
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        fs::write(&file_path, new_content).map_err(|e| format!("Failed to write file: {}", e))?;
 
         Ok(())
     }
@@ -1834,18 +2016,20 @@ impl Vault {
     }
 
     /// Parse a recurring template from a file
-    fn parse_recurring_template(path: &Path) -> Option<RecurringTemplate> {
+    fn parse_recurring_template(path: &Path, task_marker_tag: &str) -> Option<RecurringTemplate> {
         let content = fs::read_to_string(path).ok()?;
 
         let (yaml, body_raw) = Self::parse_frontmatter(&content)?;
         let body = body_raw.trim();
         let map = yaml.as_mapping()?;
 
-        let template_id = map.get(&serde_yml::Value::String("template_id".to_string()))
+        let template_id = map
+            .get(&serde_yml::Value::String("template_id".to_string()))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())?;
 
-        let recurrence_type_str = map.get(&serde_yml::Value::String("recurrence_type".to_string()))
+        let recurrence_type_str = map
+            .get(&serde_yml::Value::String("recurrence_type".to_string()))
             .and_then(|v| v.as_str())
             .unwrap_or("fixed");
         let recurrence_type = match recurrence_type_str {
@@ -1853,11 +2037,13 @@ impl Vault {
             _ => RecurrenceType::Fixed,
         };
 
-        let interval = map.get(&serde_yml::Value::String("interval".to_string()))
+        let interval = map
+            .get(&serde_yml::Value::String("interval".to_string()))
             .and_then(|v| v.as_u64())
             .unwrap_or(1) as u32;
 
-        let interval_unit_str = map.get(&serde_yml::Value::String("interval_unit".to_string()))
+        let interval_unit_str = map
+            .get(&serde_yml::Value::String("interval_unit".to_string()))
             .and_then(|v| v.as_str())
             .unwrap_or("days");
         let interval_unit = match interval_unit_str {
@@ -1865,15 +2051,18 @@ impl Vault {
             _ => IntervalUnit::Days,
         };
 
-        let start_date = map.get(&serde_yml::Value::String("start_date".to_string()))
+        let start_date = map
+            .get(&serde_yml::Value::String("start_date".to_string()))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let last_generated = map.get(&serde_yml::Value::String("last_generated".to_string()))
+        let last_generated = map
+            .get(&serde_yml::Value::String("last_generated".to_string()))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let last_completed = map.get(&serde_yml::Value::String("last_completed".to_string()))
+        let last_completed = map
+            .get(&serde_yml::Value::String("last_completed".to_string()))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
@@ -1887,15 +2076,18 @@ impl Vault {
         for (i, line) in body.lines().enumerate() {
             if let Some(parsed) = parser::parse_task_line(line) {
                 // Extract task properties
-                let (_, content_after_when) = parser::extract_when(&parsed.content, Local::now().date_naive());
+                let (_, content_after_when) =
+                    parser::extract_when(&parsed.content, Local::now().date_naive());
                 let (_, content_after_due) = parser::extract_due(&content_after_when);
-                let (explicit_project, content_after_project) = parser::extract_project(&content_after_due);
-                let (task_priority, content_after_priority) = parser::extract_priority(&content_after_project);
+                let (explicit_project, content_after_project) =
+                    parser::extract_project(&content_after_due);
+                let (task_priority, content_after_priority) =
+                    parser::extract_priority(&content_after_project);
                 let (task_tags, task_title) = parser::extract_tags(&content_after_priority);
 
                 title = task_title.trim().to_string();
                 priority = task_priority;
-                tags = task_tags;
+                tags = parser::filter_task_marker_tags(task_tags, task_marker_tag);
 
                 // Extract projects from wikilinks
                 let wikilinks = extract_wikilinks(&parsed.content);
@@ -1951,7 +2143,9 @@ impl Vault {
             for entry in entries.filter_map(|e| e.ok()) {
                 let path = entry.path();
                 if path.extension().map_or(false, |ext| ext == "md") {
-                    if let Some(template) = Self::parse_recurring_template(&path) {
+                    if let Some(template) =
+                        Self::parse_recurring_template(&path, &self.folder_paths.task_marker_tag)
+                    {
                         templates.push(template);
                     }
                 }
@@ -2004,6 +2198,13 @@ impl Vault {
             IntervalUnit::Years => "years",
         };
 
+        let task_marker_tag = self
+            .folder_paths
+            .task_marker_tag
+            .trim()
+            .trim_start_matches('#');
+        let user_tags = parser::filter_task_marker_tags(tags, task_marker_tag);
+
         // Build the task line
         let mut task_parts = vec![title.to_string()];
         if let Some(proj) = project {
@@ -2012,15 +2213,22 @@ impl Vault {
         if let Some(p) = priority {
             task_parts.push(format!("!({})", p));
         }
-        for tag in &tags {
+        if !task_marker_tag.is_empty() {
+            task_parts.push(format!("#{}", task_marker_tag));
+        }
+        for tag in &user_tags {
             task_parts.push(format!("#{}", tag));
         }
 
         let task_line = format!("- [ ] {}", task_parts.join(" "));
-        let notes_content = notes.map(|n| format!("    {}", n.replace('\n', "\n    "))).unwrap_or_default();
+        let notes_content = notes
+            .map(|n| format!("    {}", n.replace('\n', "\n    ")))
+            .unwrap_or_default();
 
         // Build YAML frontmatter
-        let start_date_line = start_date.map(|d| format!("start_date: {}\n", d)).unwrap_or_default();
+        let start_date_line = start_date
+            .map(|d| format!("start_date: {}\n", d))
+            .unwrap_or_default();
 
         let content = format!(
             "---\nrecurrence_type: {}\ninterval: {}\ninterval_unit: {}\n{}template_id: {}\nannado_exclude: true\n---\n\n{}\n{}",
@@ -2054,7 +2262,7 @@ impl Vault {
             file_path: file_path.to_string_lossy().to_string(),
             projects: project.map(|p| vec![p.to_string()]).unwrap_or_default(),
             priority,
-            tags: tags.clone(),
+            tags: user_tags.clone(),
         };
 
         // Create instance (ignore error if already exists - shouldn't happen for new template)
@@ -2077,7 +2285,7 @@ impl Vault {
             file_path: file_path.to_string_lossy().to_string(),
             projects: project.map(|p| vec![p.to_string()]).unwrap_or_default(),
             priority,
-            tags,
+            tags: user_tags,
         })
     }
 
@@ -2097,7 +2305,8 @@ impl Vault {
     ) -> Result<RecurringTemplate, String> {
         // Find the template
         let templates = self.get_all_recurring_templates();
-        let template = templates.iter()
+        let template = templates
+            .iter()
             .find(|t| t.template_id == template_id)
             .ok_or("Template not found")?;
 
@@ -2106,12 +2315,26 @@ impl Vault {
         // Update values
         let new_title = title.unwrap_or(&template.title);
         let new_notes = notes.unwrap_or(&template.notes);
-        let new_recurrence_type = recurrence_type.clone().unwrap_or(template.recurrence_type.clone());
+        let new_recurrence_type = recurrence_type
+            .clone()
+            .unwrap_or(template.recurrence_type.clone());
         let new_interval = interval.unwrap_or(template.interval);
-        let new_interval_unit = interval_unit.clone().unwrap_or(template.interval_unit.clone());
-        let new_start_date = start_date.map(|s| s.to_string()).or_else(|| template.start_date.clone());
+        let new_interval_unit = interval_unit
+            .clone()
+            .unwrap_or(template.interval_unit.clone());
+        let new_start_date = start_date
+            .map(|s| s.to_string())
+            .or_else(|| template.start_date.clone());
         let new_priority = priority.unwrap_or(template.priority);
-        let new_tags = tags.clone().unwrap_or(template.tags.clone());
+        let task_marker_tag = self
+            .folder_paths
+            .task_marker_tag
+            .trim()
+            .trim_start_matches('#');
+        let new_tags = parser::filter_task_marker_tags(
+            tags.unwrap_or_else(|| template.tags.clone()),
+            task_marker_tag,
+        );
         let new_projects = if let Some(proj) = project {
             if proj.is_empty() {
                 Vec::new()
@@ -2141,6 +2364,9 @@ impl Vault {
         }
         if let Some(p) = new_priority {
             task_parts.push(format!("!({})", p));
+        }
+        if !task_marker_tag.is_empty() {
+            task_parts.push(format!("#{}", task_marker_tag));
         }
         for tag in &new_tags {
             task_parts.push(format!("#{}", tag));
@@ -2202,7 +2428,8 @@ impl Vault {
     /// Delete a recurring template
     pub fn delete_recurring_template(&self, template_id: &str) -> Result<(), String> {
         let templates = self.get_all_recurring_templates();
-        let template = templates.iter()
+        let template = templates
+            .iter()
             .find(|t| t.template_id == template_id)
             .ok_or("Template not found")?;
 
@@ -2228,7 +2455,11 @@ impl Vault {
                 // Generate if enough time has passed since last generation
                 if let Some(ref last_gen) = template.last_generated {
                     if let Ok(last_date) = NaiveDate::parse_from_str(last_gen, "%Y-%m-%d") {
-                        let next_date = self.calculate_next_date(last_date, template.interval, &template.interval_unit);
+                        let next_date = self.calculate_next_date(
+                            last_date,
+                            template.interval,
+                            &template.interval_unit,
+                        );
                         today >= next_date
                     } else {
                         true
@@ -2246,7 +2477,11 @@ impl Vault {
                     }
                     Some(last_comp) => {
                         if let Ok(last_date) = NaiveDate::parse_from_str(last_comp, "%Y-%m-%d") {
-                            let next_date = self.calculate_next_date(last_date, template.interval, &template.interval_unit);
+                            let next_date = self.calculate_next_date(
+                                last_date,
+                                template.interval,
+                                &template.interval_unit,
+                            );
                             today >= next_date
                         } else {
                             false
@@ -2258,7 +2493,12 @@ impl Vault {
     }
 
     /// Calculate the next date based on interval and unit
-    fn calculate_next_date(&self, from_date: NaiveDate, interval: u32, unit: &IntervalUnit) -> NaiveDate {
+    fn calculate_next_date(
+        &self,
+        from_date: NaiveDate,
+        interval: u32,
+        unit: &IntervalUnit,
+    ) -> NaiveDate {
         match unit {
             IntervalUnit::Days => from_date + chrono::Duration::days(interval as i64),
             IntervalUnit::Weeks => from_date + chrono::Duration::weeks(interval as i64),
@@ -2276,8 +2516,8 @@ impl Vault {
     /// Edits the frontmatter lines directly so the rest of the file, key order,
     /// and formatting stay untouched.
     fn update_template_yaml_field(file_path: &str, field: &str, value: &str) -> Result<(), String> {
-        let content = fs::read_to_string(file_path)
-            .map_err(|e| format!("Failed to read template: {}", e))?;
+        let content =
+            fs::read_to_string(file_path).map_err(|e| format!("Failed to read template: {}", e))?;
 
         let mut lines: Vec<String> = content.lines().map(String::from).collect();
         if lines.first().map(|l| l.trim() != "---").unwrap_or(true) {
@@ -2292,7 +2532,10 @@ impl Vault {
             .ok_or("Template frontmatter is not closed")?;
 
         let prefix = format!("{}:", field);
-        if let Some(line) = lines[1..end].iter_mut().find(|l| l.trim_start().starts_with(&prefix)) {
+        if let Some(line) = lines[1..end]
+            .iter_mut()
+            .find(|l| l.trim_start().starts_with(&prefix))
+        {
             *line = format!("{} {}", prefix, value);
         } else {
             lines.insert(end, format!("{} {}", prefix, value));
@@ -2302,14 +2545,23 @@ impl Vault {
             .map_err(|e| format!("Failed to update template: {}", e))
     }
 
-    fn update_template_last_generated(&self, template: &RecurringTemplate, date: &str) -> Result<(), String> {
+    fn update_template_last_generated(
+        &self,
+        template: &RecurringTemplate,
+        date: &str,
+    ) -> Result<(), String> {
         Self::update_template_yaml_field(&template.file_path, "last_generated", date)
     }
 
     /// Update the last_completed field in a template file
-    pub fn update_template_last_completed(&self, template_id: &str, date: &str) -> Result<(), String> {
+    pub fn update_template_last_completed(
+        &self,
+        template_id: &str,
+        date: &str,
+    ) -> Result<(), String> {
         let templates = self.get_all_recurring_templates();
-        let template = templates.iter()
+        let template = templates
+            .iter()
             .find(|t| t.template_id == template_id)
             .ok_or("Template not found")?;
         Self::update_template_yaml_field(&template.file_path, "last_completed", date)
@@ -2369,8 +2621,13 @@ impl Vault {
     }
 
     /// Create a single recurring task instance
-    fn create_recurring_instance(&self, template: &RecurringTemplate, date: NaiveDate) -> Result<Task, String> {
+    fn create_recurring_instance(
+        &self,
+        template: &RecurringTemplate,
+        date: NaiveDate,
+    ) -> Result<Task, String> {
         let file_path = self.get_daily_note_path(date);
+        let app_file_path = self.app_path_for(&file_path);
         self.ensure_daily_note_exists(&file_path, date)?;
 
         // Use file-based lock to prevent concurrent instance creation
@@ -2383,7 +2640,10 @@ impl Vault {
         let _lock_guard = match lock_file {
             Ok(_f) => Some(()),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                return Err(format!("Instance creation already in progress for {}", date));
+                return Err(format!(
+                    "Instance creation already in progress for {}",
+                    date
+                ));
             }
             Err(_e) => {
                 // If we can't create lock (e.g., permissions), proceed without lock
@@ -2408,11 +2668,21 @@ impl Vault {
         let recurring_marker = format!("@recurring({})", template.template_id);
         if content.contains(&recurring_marker) {
             // Instance already exists, return a dummy task (will be filtered by caller)
-            return Err(format!("Instance for template {} already exists", template.template_id));
+            return Err(format!(
+                "Instance for template {} already exists",
+                template.template_id
+            ));
         }
 
         let line_count = content.lines().count();
         let new_line_number = line_count + 1;
+
+        let task_marker_tag = self
+            .folder_paths
+            .task_marker_tag
+            .trim()
+            .trim_start_matches('#');
+        let user_tags = parser::filter_task_marker_tags(template.tags.clone(), task_marker_tag);
 
         // Build task line with all metadata
         let mut parts = vec![template.title.clone()];
@@ -2426,7 +2696,11 @@ impl Vault {
             parts.push(format!("!({})", p));
         }
 
-        for tag in &template.tags {
+        if !task_marker_tag.is_empty() {
+            parts.push(format!("#{}", task_marker_tag));
+        }
+
+        for tag in &user_tags {
             parts.push(format!("#{}", tag));
         }
 
@@ -2436,7 +2710,8 @@ impl Vault {
 
         // Add notes as indented lines after the task
         let task_with_notes = if !template.notes.is_empty() {
-            let indented_notes = template.notes
+            let indented_notes = template
+                .notes
                 .lines()
                 .map(|line| format!("    {}", line))
                 .collect::<Vec<_>>()
@@ -2452,21 +2727,20 @@ impl Vault {
             format!("{}\n{}\n", content, task_with_notes)
         };
 
-        fs::write(&file_path, new_content)
-            .map_err(|e| format!("Failed to write task: {}", e))?;
+        fs::write(&file_path, new_content).map_err(|e| format!("Failed to write task: {}", e))?;
 
         let task = Task {
-            id: Task::generate_id(&file_path.to_string_lossy(), new_line_number),
+            id: Task::generate_id(&app_file_path, new_line_number),
             title: template.title.clone(),
             notes: template.notes.clone(),
             when: WhenValue::Date(date.format("%Y-%m-%d").to_string()),
             deadline: None,
-            tags: template.tags.clone(),
+            tags: user_tags,
             checklist: Vec::new(),
             completed: false,
             completed_date: None,
             created_date: Some(date.format("%Y-%m-%d").to_string()),
-            file_path: file_path.to_string_lossy().to_string(),
+            file_path: app_file_path,
             line_number: new_line_number,
             projects: template.projects.clone(),
             indent_level: 0,
@@ -2488,7 +2762,12 @@ impl Vault {
 
     fn find_or_create_projects_root(&self) -> Result<PathBuf, String> {
         let projects_pattern = &self.folder_paths.projects_pattern;
-        for entry in WalkDir::new(&self.path).max_depth(2).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(&self.path)
+            .max_depth(2)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
             if path.is_dir() && !is_hidden_path(path) {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -2499,13 +2778,19 @@ impl Vault {
             }
         }
         let root = self.path.join(projects_pattern.as_str());
-        fs::create_dir_all(&root).map_err(|e| format!("Failed to create projects folder: {}", e))?;
+        fs::create_dir_all(&root)
+            .map_err(|e| format!("Failed to create projects folder: {}", e))?;
         Ok(root)
     }
 
     fn find_or_create_persons_root(&self) -> Result<PathBuf, String> {
         let persons_pattern = &self.folder_paths.persons_pattern;
-        for entry in WalkDir::new(&self.path).max_depth(2).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(&self.path)
+            .max_depth(2)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
             if path.is_dir() && !is_hidden_path(path) {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
@@ -2523,9 +2808,16 @@ impl Vault {
     fn replace_wikilink_across_vault(&self, old_name: &str, new_name: &str) -> Result<(), String> {
         let old_link = format!("[[{}]]", old_name);
         let new_link = format!("[[{}]]", new_name);
-        for entry in WalkDir::new(&self.path).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(&self.path)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |e| e == "md") && !is_hidden_path(path) {
+            if path.is_file()
+                && path.extension().map_or(false, |e| e == "md")
+                && !is_hidden_path(path)
+            {
                 if let Ok(content) = fs::read_to_string(path) {
                     if content.contains(&old_link) {
                         let _ = fs::write(path, content.replace(&old_link, &new_link));
@@ -2612,20 +2904,25 @@ impl Vault {
 
         Ok(ProjectInfo {
             name: safe_name,
-            path: target_path.to_string_lossy().to_string(),
+            path: self.app_path_for(&target_path),
             depth,
             parent_folder: parent_folder.map(sanitize_filename),
             metadata,
         })
     }
 
-    pub fn rename_project_file(&self, old_name: &str, new_name: &str) -> Result<ProjectInfo, String> {
+    pub fn rename_project_file(
+        &self,
+        old_name: &str,
+        new_name: &str,
+    ) -> Result<ProjectInfo, String> {
         let safe_new_name = sanitize_filename(new_name);
         if safe_new_name.is_empty() {
             return Err("New project name is empty".to_string());
         }
 
-        let old_path = self.find_project_file(old_name)
+        let old_path = self
+            .find_project_file(old_name)
             .ok_or_else(|| format!("Project '{}' not found", old_name))?;
 
         let parent_dir = old_path.parent().ok_or("Could not get parent directory")?;
@@ -2640,20 +2937,34 @@ impl Vault {
 
         self.replace_wikilink_across_vault(old_name, &safe_new_name)?;
 
-        let projects_pattern = &self.folder_paths.projects_pattern;
-        let path_str = new_path.to_string_lossy();
+        let projects_pattern = normalize_path_pattern(&self.folder_paths.projects_pattern);
+        let path_str = self.app_path_for(&new_path);
         let parts: Vec<&str> = path_str.split('/').collect();
-        let projects_idx = parts.iter().position(|p| p.contains(projects_pattern.as_str()) && !p.ends_with(".md"));
+        let projects_idx = parts
+            .iter()
+            .position(|p| p.contains(projects_pattern.as_str()) && !p.ends_with(".md"));
         let depth = if let Some(idx) = projects_idx {
-            if parts.len() > idx + 2 { parts.len() - idx - 2 } else { 0 }
-        } else { 0 };
-        let parent_folder = if depth > 0 { parts.get(parts.len().saturating_sub(2)).map(|s| s.to_string()) } else { None };
+            if parts.len() > idx + 2 {
+                parts.len() - idx - 2
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+        let parent_folder = if depth > 0 {
+            parts
+                .get(parts.len().saturating_sub(2))
+                .map(|s| s.to_string())
+        } else {
+            None
+        };
 
         let metadata = Self::parse_project_metadata(&new_path);
 
         Ok(ProjectInfo {
             name: safe_new_name,
-            path: new_path.to_string_lossy().to_string(),
+            path: path_str.clone(),
             depth,
             parent_folder,
             metadata,
@@ -2719,7 +3030,7 @@ impl Vault {
 
         Ok(PersonInfo {
             name: safe_name,
-            path: target_path.to_string_lossy().to_string(),
+            path: self.app_path_for(&target_path),
         })
     }
 
@@ -2729,7 +3040,8 @@ impl Vault {
             return Err("New person name is empty".to_string());
         }
 
-        let old_path = self.find_person_file(old_name)
+        let old_path = self
+            .find_person_file(old_name)
             .ok_or_else(|| format!("Person '{}' not found", old_name))?;
 
         let parent_dir = old_path.parent().ok_or("Could not get parent directory")?;
@@ -2746,7 +3058,7 @@ impl Vault {
 
         Ok(PersonInfo {
             name: safe_new_name,
-            path: new_path.to_string_lossy().to_string(),
+            path: self.app_path_for(&new_path),
         })
     }
 }
@@ -2754,7 +3066,13 @@ impl Vault {
 /// Sanitize a string for use as a filename
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .trim()
         .to_string()
@@ -2767,11 +3085,11 @@ impl Vault {
         let task = self.get_task(task_id).ok_or("Task not found")?;
 
         // Validate file path is within vault
-        self.validate_path_in_vault(&task.file_path)?;
+        let native_path = self.validate_path_in_vault(&task.file_path)?;
 
         // Read the file
-        let content = fs::read_to_string(&task.file_path)
-            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let content =
+            fs::read_to_string(&native_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
         let lines: Vec<&str> = content.lines().collect();
         let line_index = task.line_number - 1;
@@ -2824,8 +3142,7 @@ impl Vault {
 
         // Write back to file
         let new_content = new_lines.join("\n");
-        fs::write(&task.file_path, new_content)
-            .map_err(|e| format!("Failed to write file: {}", e))?;
+        fs::write(&native_path, new_content).map_err(|e| format!("Failed to write file: {}", e))?;
 
         // Remove from cache
         {
@@ -2840,6 +3157,18 @@ impl Vault {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_vault(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("annado-{}-{}", name, nanos));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
 
     #[test]
     fn test_is_path_excluded_folder_without_trailing_slash() {
@@ -2847,21 +3176,17 @@ mod tests {
         let vault = Path::new("/Users/demo/Vault");
         let excluded = vec!["02. Projects/Archived".to_string()];
 
-        let archived_project =
-            Path::new("/Users/demo/Vault/02. Projects/Archived/Old Project.md");
+        let archived_project = Path::new("/Users/demo/Vault/02. Projects/Archived/Old Project.md");
         assert!(Vault::is_path_excluded(archived_project, vault, &excluded));
 
-        let nested =
-            Path::new("/Users/demo/Vault/02. Projects/Archived/2024/Older.md");
+        let nested = Path::new("/Users/demo/Vault/02. Projects/Archived/2024/Older.md");
         assert!(Vault::is_path_excluded(nested, vault, &excluded));
 
-        let active_project =
-            Path::new("/Users/demo/Vault/02. Projects/Current Project.md");
+        let active_project = Path::new("/Users/demo/Vault/02. Projects/Current Project.md");
         assert!(!Vault::is_path_excluded(active_project, vault, &excluded));
 
         // Prefix must match whole folder names, not partial ones like "Archived Extra"...
-        let similar =
-            Path::new("/Users/demo/Vault/02. Projects/ArchivedExtra/P.md");
+        let similar = Path::new("/Users/demo/Vault/02. Projects/ArchivedExtra/P.md");
         // Documents current behavior: bare pattern also matches as plain prefix
         // via the trailing-slash variant only, so this must NOT be excluded.
         assert!(!Vault::is_path_excluded(similar, vault, &excluded));
@@ -2871,7 +3196,107 @@ mod tests {
     fn test_is_path_excluded_exact_file_and_md_variant() {
         let vault = Path::new("/v");
         let excluded = vec!["Shopping List".to_string()];
-        assert!(Vault::is_path_excluded(Path::new("/v/Shopping List.md"), vault, &excluded));
-        assert!(!Vault::is_path_excluded(Path::new("/v/Shopping.md"), vault, &excluded));
+        assert!(Vault::is_path_excluded(
+            Path::new("/v/Shopping List.md"),
+            vault,
+            &excluded
+        ));
+        assert!(!Vault::is_path_excluded(
+            Path::new("/v/Shopping.md"),
+            vault,
+            &excluded
+        ));
+    }
+
+    #[test]
+    fn test_is_path_excluded_normalizes_native_paths_and_patterns() {
+        let vault = Path::new("Vault");
+        let archived = vault
+            .join("02. Projects")
+            .join("Archived")
+            .join("Old Project.md");
+
+        assert!(Vault::is_path_excluded(
+            &archived,
+            vault,
+            &["02. Projects/Archived".to_string()]
+        ));
+        assert!(Vault::is_path_excluded(
+            &archived,
+            vault,
+            &[r"02. Projects\Archived".to_string()]
+        ));
+    }
+
+    #[test]
+    fn test_vault_relative_internal_path_uses_forward_slashes() {
+        let vault = Path::new("Vault");
+        let file = vault.join("Daily Notes").join("2026-06-16.md");
+
+        assert_eq!(
+            path_to_vault_relative_internal(vault, &file),
+            "Daily Notes/2026-06-16.md"
+        );
+    }
+
+    #[test]
+    fn test_wikilink_path_parsing_accepts_windows_separators() {
+        assert_eq!(
+            Vault::parse_wikilink(r"[[01. Persons\Jane Doe]]"),
+            "Jane Doe"
+        );
+    }
+
+    #[test]
+    fn test_project_and_person_discovery_emit_internal_paths() {
+        let root = temp_vault("project-person-discovery");
+        let projects_dir = root.join("02. Projects").join("Area");
+        let persons_dir = root.join("01. Persons");
+        fs::create_dir_all(&projects_dir).unwrap();
+        fs::create_dir_all(&persons_dir).unwrap();
+        fs::write(projects_dir.join("Launch Plan.md"), "# Launch Plan\n").unwrap();
+        fs::write(persons_dir.join("Jane Doe.md"), "# Jane Doe\n").unwrap();
+
+        let mut folders = FolderPaths::default();
+        folders.projects_pattern = "02. Projects".to_string();
+        folders.persons_pattern = "01. Persons".to_string();
+        let vault = Vault::new_with_folder_paths(root.clone(), folders, false);
+
+        let projects = vault.get_all_projects();
+        let launch = projects.iter().find(|p| p.name == "Launch Plan").unwrap();
+        assert_eq!(launch.depth, 1);
+        assert_eq!(launch.parent_folder.as_deref(), Some("Area"));
+        assert_eq!(launch.path, "02. Projects/Area/Launch Plan.md");
+
+        let persons = vault.get_all_persons();
+        assert_eq!(persons.len(), 1);
+        assert_eq!(persons[0].name, "Jane Doe");
+        assert_eq!(persons[0].path, "01. Persons/Jane Doe.md");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_scan_skips_recurring_template_folder_with_native_paths() {
+        let root = temp_vault("recurring-skip");
+        let recurring_dir = root.join("12. System").join("recurring-tasks");
+        let daily_dir = root.join("00. Daily Notes");
+        fs::create_dir_all(&recurring_dir).unwrap();
+        fs::create_dir_all(&daily_dir).unwrap();
+        fs::write(
+            recurring_dir.join("Template.md"),
+            "- [ ] Template task #task\n",
+        )
+        .unwrap();
+        fs::write(daily_dir.join("2026-06-16.md"), "- [ ] Real task #task\n").unwrap();
+
+        let vault = Vault::new_with_folder_paths(root.clone(), FolderPaths::default(), false);
+        let tasks = vault.scan();
+
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].title, "Real task");
+        assert_eq!(tasks[0].file_path, "00. Daily Notes/2026-06-16.md");
+
+        let _ = fs::remove_dir_all(root);
     }
 }

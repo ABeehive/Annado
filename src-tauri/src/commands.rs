@@ -1,6 +1,8 @@
-use crate::calendar::{self, CalendarInfo, CalendarEvent};
-use crate::parser::{self, Task, WhenValue, RecurringTemplate, RecurrenceType, IntervalUnit};
-use crate::vault::{FolderPaths, Milestone, PersonInfo, PersonMetadata, ProjectInfo, ProjectMetadata, Vault};
+use crate::calendar::{self, CalendarEvent, CalendarInfo};
+use crate::parser::{self, IntervalUnit, RecurrenceType, RecurringTemplate, Task, WhenValue};
+use crate::vault::{
+    FolderPaths, Milestone, PersonInfo, PersonMetadata, ProjectInfo, ProjectMetadata, Vault,
+};
 use chrono::Local;
 use parking_lot::RwLock;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -25,10 +27,20 @@ pub struct AppConfig {
     pub editor_custom_command: String,
 }
 
-fn default_editor_type() -> String { "system".to_string() }
+fn default_editor_type() -> String {
+    "system".to_string()
+}
+
+#[tauri::command]
+pub fn get_platform() -> String {
+    std::env::consts::OS.to_string()
+}
 
 fn get_config_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|dir| dir.join("config.json"))
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|dir| dir.join("config.json"))
 }
 
 fn load_config(app: &AppHandle) -> AppConfig {
@@ -57,9 +69,12 @@ fn load_config(app: &AppHandle) -> AppConfig {
             // Save migrated config and remove legacy file
             if let Some(config_path) = get_config_path(app) {
                 if let Some(parent) = config_path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-                let _ = std::fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap_or_default());
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let _ = std::fs::write(
+                    &config_path,
+                    serde_json::to_string_pretty(&config).unwrap_or_default(),
+                );
                 let _ = std::fs::remove_file(&legacy_path);
             }
             return config;
@@ -76,8 +91,7 @@ fn save_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
     }
     let content = serde_json::to_string_pretty(config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
-    std::fs::write(&config_path, content)
-        .map_err(|e| format!("Failed to write config: {}", e))?;
+    std::fs::write(&config_path, content).map_err(|e| format!("Failed to write config: {}", e))?;
     Ok(())
 }
 
@@ -117,16 +131,16 @@ pub struct TaskUpdatePayload {
     pub notes: Option<String>,
     pub when: Option<WhenValue>,
     #[serde(default, deserialize_with = "deserialize_optional_nullable")]
-    pub deadline: Option<Option<String>>,  // None = not updated, Some(None) = remove, Some(Some(s)) = set
+    pub deadline: Option<Option<String>>, // None = not updated, Some(None) = remove, Some(Some(s)) = set
     pub tags: Option<Vec<String>>,
     pub completed: Option<bool>,
     pub projects: Option<Vec<String>>,
     #[serde(default, deserialize_with = "deserialize_optional_nullable")]
-    pub priority: Option<Option<u8>>,  // None = not updated, Some(None) = remove, Some(Some(n)) = set to n
+    pub priority: Option<Option<u8>>, // None = not updated, Some(None) = remove, Some(Some(n)) = set to n
     #[serde(default, deserialize_with = "deserialize_optional_nullable")]
-    pub duration_minutes: Option<Option<u32>>,  // None = not updated, Some(None) = remove, Some(Some(n)) = set
+    pub duration_minutes: Option<Option<u32>>, // None = not updated, Some(None) = remove, Some(Some(n)) = set
     #[serde(default, deserialize_with = "deserialize_optional_nullable")]
-    pub scheduled_time: Option<Option<String>>,  // None = not updated, Some(None) = remove, Some(Some(s)) = set
+    pub scheduled_time: Option<Option<String>>, // None = not updated, Some(None) = remove, Some(Some(s)) = set
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -154,13 +168,15 @@ pub fn set_vault_path(path: String, app: AppHandle) -> Result<Vec<Task>, String>
     }
 
     // Canonicalize the path to resolve any ../ components
-    let path_buf = path_buf.canonicalize()
+    let path_buf = path_buf
+        .canonicalize()
         .map_err(|e| format!("Failed to resolve path: {}", e))?;
     let path = path_buf.to_string_lossy().to_string();
 
     // Verify write permission
     let test_file = path_buf.join(".annado_write_test");
-    std::fs::write(&test_file, "").map_err(|_| "No write permission to this directory".to_string())?;
+    std::fs::write(&test_file, "")
+        .map_err(|_| "No write permission to this directory".to_string())?;
     let _ = std::fs::remove_file(&test_file);
 
     // Load existing config to preserve folder_paths
@@ -170,7 +186,11 @@ pub fn set_vault_path(path: String, app: AppHandle) -> Result<Vec<Task>, String>
     // Auto-detect Obsidian vault (overrides saved value when vault path changes)
     config.is_obsidian_vault = path_buf.join(".obsidian").is_dir();
 
-    let mut vault = Vault::new_with_folder_paths(path_buf, config.folder_paths.clone(), config.is_obsidian_vault);
+    let mut vault = Vault::new_with_folder_paths(
+        path_buf,
+        config.folder_paths.clone(),
+        config.is_obsidian_vault,
+    );
     vault.set_excluded_paths(config.excluded_paths.clone());
     let tasks = vault.scan();
 
@@ -329,7 +349,11 @@ pub fn toggle_checklist_item(task_id: String, item_index: usize) -> Result<Task,
 }
 
 #[tauri::command]
-pub fn rename_checklist_item(task_id: String, item_index: usize, new_title: String) -> Result<Task, String> {
+pub fn rename_checklist_item(
+    task_id: String,
+    item_index: usize,
+    new_title: String,
+) -> Result<Task, String> {
     with_vault_result(|vault| vault.rename_checklist_item(&task_id, item_index, &new_title))
 }
 
@@ -367,14 +391,18 @@ pub fn get_all_tags() -> Result<Vec<TagInfo>, String> {
         // Tags are case-insensitive for identity (like Obsidian): group case
         // variants under a lowercase key, summing their counts, while tracking how
         // often each exact casing was seen so we can pick a canonical display.
-        let mut groups: std::collections::HashMap<String, (usize, std::collections::HashMap<String, usize>)> =
-            std::collections::HashMap::new();
+        let mut groups: std::collections::HashMap<
+            String,
+            (usize, std::collections::HashMap<String, usize>),
+        > = std::collections::HashMap::new();
         for task in &tasks {
             if task.completed {
                 continue;
             }
             for tag in &task.tags {
-                let entry = groups.entry(tag.to_lowercase()).or_insert((0, std::collections::HashMap::new()));
+                let entry = groups
+                    .entry(tag.to_lowercase())
+                    .or_insert((0, std::collections::HashMap::new()));
                 entry.0 += 1;
                 *entry.1.entry(tag.clone()).or_insert(0) += 1;
             }
@@ -451,18 +479,22 @@ pub struct CreateRecurringTemplatePayload {
 }
 
 #[tauri::command]
-pub fn create_recurring_template(payload: CreateRecurringTemplatePayload) -> Result<RecurringTemplate, String> {
-    with_vault_result(|vault| vault.create_recurring_template(
-        &payload.title,
-        payload.notes.as_deref(),
-        payload.recurrence_type,
-        payload.interval,
-        payload.interval_unit,
-        payload.start_date.as_deref(),
-        payload.project.as_deref(),
-        payload.priority,
-        payload.tags.unwrap_or_default(),
-    ))
+pub fn create_recurring_template(
+    payload: CreateRecurringTemplatePayload,
+) -> Result<RecurringTemplate, String> {
+    with_vault_result(|vault| {
+        vault.create_recurring_template(
+            &payload.title,
+            payload.notes.as_deref(),
+            payload.recurrence_type,
+            payload.interval,
+            payload.interval_unit,
+            payload.start_date.as_deref(),
+            payload.project.as_deref(),
+            payload.priority,
+            payload.tags.unwrap_or_default(),
+        )
+    })
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -481,19 +513,23 @@ pub struct UpdateRecurringTemplatePayload {
 }
 
 #[tauri::command]
-pub fn update_recurring_template(payload: UpdateRecurringTemplatePayload) -> Result<RecurringTemplate, String> {
-    with_vault_result(|vault| vault.update_recurring_template(
-        &payload.template_id,
-        payload.title.as_deref(),
-        payload.notes.as_deref(),
-        payload.recurrence_type,
-        payload.interval,
-        payload.interval_unit,
-        payload.start_date.as_deref(),
-        payload.project.as_deref(),
-        payload.priority,
-        payload.tags,
-    ))
+pub fn update_recurring_template(
+    payload: UpdateRecurringTemplatePayload,
+) -> Result<RecurringTemplate, String> {
+    with_vault_result(|vault| {
+        vault.update_recurring_template(
+            &payload.template_id,
+            payload.title.as_deref(),
+            payload.notes.as_deref(),
+            payload.recurrence_type,
+            payload.interval,
+            payload.interval_unit,
+            payload.start_date.as_deref(),
+            payload.project.as_deref(),
+            payload.priority,
+            payload.tags,
+        )
+    })
 }
 
 #[tauri::command]
@@ -513,9 +549,26 @@ pub fn get_folder_paths(app: AppHandle) -> FolderPaths {
 
 #[tauri::command]
 pub fn set_folder_paths(folder_paths: FolderPaths, app: AppHandle) -> Result<Vec<Task>, String> {
+    let mut folder_paths = folder_paths;
+
     // Reject path traversal in folder paths
     if folder_paths.recurring_templates.contains("..") {
         return Err("Folder path must not contain '..'".to_string());
+    }
+    folder_paths.task_marker_tag = folder_paths
+        .task_marker_tag
+        .trim()
+        .trim_start_matches('#')
+        .to_string();
+    if !folder_paths.task_marker_tag.is_empty()
+        && !folder_paths
+            .task_marker_tag
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_')
+    {
+        return Err(
+            "Task marker tag may only contain letters, numbers, or underscores".to_string(),
+        );
     }
 
     // Update config
@@ -568,11 +621,88 @@ pub fn get_editor_config(app: AppHandle) -> EditorConfig {
 }
 
 #[tauri::command]
-pub fn set_editor_config(editor_type: String, editor_custom_command: String, app: AppHandle) -> Result<(), String> {
+pub fn set_editor_config(
+    editor_type: String,
+    editor_custom_command: String,
+    app: AppHandle,
+) -> Result<(), String> {
     let mut config = load_config(&app);
     config.editor_type = editor_type;
     config.editor_custom_command = editor_custom_command;
     save_config(&app, &config)
+}
+
+fn parse_command_template(command: &str) -> Result<Vec<String>, String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+
+    for c in command.chars() {
+        match c {
+            '"' | '\'' if quote == Some(c) => quote = None,
+            '"' | '\'' if quote.is_none() => quote = Some(c),
+            c if c.is_whitespace() && quote.is_none() => {
+                if !current.is_empty() {
+                    args.push(std::mem::take(&mut current));
+                }
+            }
+            _ => current.push(c),
+        }
+    }
+
+    if let Some(open_quote) = quote {
+        return Err(format!("Unclosed quote in custom command: {}", open_quote));
+    }
+
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    Ok(args)
+}
+
+fn build_custom_command_args(
+    custom_command: &str,
+    file_path: &str,
+    line_number: usize,
+) -> Result<Vec<String>, String> {
+    let args = parse_command_template(custom_command.trim())?;
+    if args.is_empty() {
+        return Err("Empty custom command".to_string());
+    }
+
+    Ok(args
+        .into_iter()
+        .map(|arg| {
+            arg.replace("{file}", file_path)
+                .replace("{line}", &line_number.to_string())
+        })
+        .collect())
+}
+
+fn open_with_system(file_path: &str) -> Result<(), String> {
+    tauri_plugin_opener::open_path(file_path, None::<&str>)
+        .map_err(|e| format!("Failed to open file: {}", e))
+}
+
+#[cfg(target_os = "macos")]
+fn sublime_app_name() -> &'static str {
+    "Sublime Text"
+}
+
+#[cfg(target_os = "windows")]
+fn sublime_app_name() -> &'static str {
+    "sublime_text"
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn sublime_app_name() -> &'static str {
+    "sublime_text"
+}
+
+fn open_with_sublime(file_path: &str) -> Result<(), String> {
+    tauri_plugin_opener::open_path(file_path, Some(sublime_app_name()))
+        .map_err(|e| format!("Failed to open in Sublime Text: {}", e))
 }
 
 #[tauri::command]
@@ -584,34 +714,80 @@ pub fn open_file_in_editor(
 ) -> Result<(), String> {
     match editor_type.as_str() {
         "sublime" => {
-            std::process::Command::new("open")
-                .arg("-a")
-                .arg("Sublime Text")
-                .arg(&file_path)
-                .spawn()
-                .map_err(|e| format!("Failed to open in Sublime Text: {}", e))?;
+            open_with_sublime(&file_path)?;
         }
         "custom" if !custom_command.is_empty() => {
-            let cmd = custom_command
-                .replace("{file}", &file_path)
-                .replace("{line}", &line_number.to_string());
-            let mut parts = cmd.split_whitespace();
-            let program = parts.next().ok_or("Empty custom command")?;
-            let args: Vec<&str> = parts.collect();
+            let command_args = build_custom_command_args(&custom_command, &file_path, line_number)?;
+            let (program, args) = command_args
+                .split_first()
+                .ok_or_else(|| "Empty custom command".to_string())?;
+
             std::process::Command::new(program)
                 .args(args)
                 .spawn()
                 .map_err(|e| format!("Failed to run custom command: {}", e))?;
         }
         _ => {
-            // "system" or fallback: open with system default
-            std::process::Command::new("open")
-                .arg(&file_path)
-                .spawn()
-                .map_err(|e| format!("Failed to open file: {}", e))?;
+            open_with_system(&file_path)?;
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod editor_command_tests {
+    use super::build_custom_command_args;
+
+    #[test]
+    fn custom_command_keeps_windows_path_with_spaces_as_one_arg() {
+        let args = build_custom_command_args(
+            "code --goto {file}:{line}",
+            r"C:\Users\Me\Vault With Spaces\Task File.md",
+            42,
+        )
+        .unwrap();
+
+        assert_eq!(
+            args,
+            vec![
+                "code",
+                "--goto",
+                r"C:\Users\Me\Vault With Spaces\Task File.md:42"
+            ]
+        );
+    }
+
+    #[test]
+    fn custom_command_supports_quoted_program_and_placeholders() {
+        let args = build_custom_command_args(
+            r#""C:\Program Files\Editor\editor.exe" --line "{line}" "{file}""#,
+            r"C:\Users\Me\Vault With Spaces\Task File.md",
+            7,
+        )
+        .unwrap();
+
+        assert_eq!(
+            args,
+            vec![
+                r"C:\Program Files\Editor\editor.exe",
+                "--line",
+                "7",
+                r"C:\Users\Me\Vault With Spaces\Task File.md"
+            ]
+        );
+    }
+
+    #[test]
+    fn custom_command_rejects_unclosed_quote() {
+        let err = build_custom_command_args(
+            r#"code --goto "{file}:{line}"#,
+            r"C:\Users\Me\Task File.md",
+            1,
+        )
+        .unwrap_err();
+
+        assert!(err.contains("Unclosed quote"));
+    }
 }
 
 #[tauri::command]
@@ -625,7 +801,10 @@ pub fn get_excluded_paths(app: AppHandle) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn set_excluded_paths(excluded_paths: Vec<String>, app: AppHandle) -> Result<Vec<Task>, String> {
+pub fn set_excluded_paths(
+    excluded_paths: Vec<String>,
+    app: AppHandle,
+) -> Result<Vec<Task>, String> {
     // Update config
     let mut config = load_config(&app);
     config.excluded_paths = excluded_paths.clone();
@@ -696,20 +875,26 @@ pub struct RenamePersonPayload {
 
 #[tauri::command]
 pub fn create_project(payload: CreateProjectPayload) -> Result<ProjectInfo, String> {
-    let milestones: Vec<Milestone> = payload.milestones.iter().map(|m| Milestone {
-        name: m.name.clone(),
-        start: None,
-        end: m.end.clone(),
-        completed: false,
-    }).collect();
-    with_vault_result(|vault| vault.create_project_file(
-        &payload.name,
-        payload.parent_folder.as_deref(),
-        payload.description.as_deref(),
-        payload.deadline.as_deref(),
-        &payload.persons,
-        &milestones,
-    ))
+    let milestones: Vec<Milestone> = payload
+        .milestones
+        .iter()
+        .map(|m| Milestone {
+            name: m.name.clone(),
+            start: None,
+            end: m.end.clone(),
+            completed: false,
+        })
+        .collect();
+    with_vault_result(|vault| {
+        vault.create_project_file(
+            &payload.name,
+            payload.parent_folder.as_deref(),
+            payload.description.as_deref(),
+            payload.deadline.as_deref(),
+            &payload.persons,
+            &milestones,
+        )
+    })
 }
 
 #[tauri::command]
@@ -719,13 +904,15 @@ pub fn rename_project(payload: RenameProjectPayload) -> Result<ProjectInfo, Stri
 
 #[tauri::command]
 pub fn create_person(payload: CreatePersonPayload) -> Result<PersonInfo, String> {
-    with_vault_result(|vault| vault.create_person_file(
-        &payload.name,
-        payload.organisation.as_deref(),
-        payload.relationship.as_deref(),
-        &payload.languages,
-        &payload.projects,
-    ))
+    with_vault_result(|vault| {
+        vault.create_person_file(
+            &payload.name,
+            payload.organisation.as_deref(),
+            payload.relationship.as_deref(),
+            &payload.languages,
+            &payload.projects,
+        )
+    })
 }
 
 #[tauri::command]
@@ -741,7 +928,11 @@ pub fn get_calendars() -> Result<Vec<CalendarInfo>, String> {
 }
 
 #[tauri::command]
-pub fn get_calendar_events(calendar_names: Vec<String>, start_date: String, end_date: String) -> Result<Vec<CalendarEvent>, String> {
+pub fn get_calendar_events(
+    calendar_names: Vec<String>,
+    start_date: String,
+    end_date: String,
+) -> Result<Vec<CalendarEvent>, String> {
     calendar::fetch_events(calendar_names, start_date, end_date)
 }
 
@@ -779,7 +970,8 @@ pub fn open_task_in_main(id: String, app: AppHandle) -> Result<(), String> {
         w.unminimize().ok();
         w.set_focus().map_err(|e| e.to_string())?;
     }
-    app.emit_to("main", "tray-open-task", id).map_err(|e| e.to_string())
+    app.emit_to("main", "tray-open-task", id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -798,7 +990,8 @@ pub fn save_notification_prefs(
 #[tauri::command]
 pub fn set_tray_enabled(enabled: bool, app: AppHandle) -> Result<(), String> {
     if let Some(tray) = app.tray_by_id("main-tray") {
-        tray.set_visible(enabled).map_err(|e: tauri::Error| e.to_string())?;
+        tray.set_visible(enabled)
+            .map_err(|e: tauri::Error| e.to_string())?;
     }
     let mut prefs = crate::notification_scheduler::load_notification_prefs(&app);
     prefs.tray_enabled = enabled;
