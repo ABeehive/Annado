@@ -8,8 +8,6 @@ export interface PanelState {
   selectedProject: string | null;
   selectedPerson: string | null;
   selectedTag: string | null;
-  expandedTaskId: string | null;
-  selectedTaskIds: string[];
   getFilteredTasks: () => Task[];
   expandTask: (id: string | null) => void;
   toggleTaskSelection: (id: string, multiSelect?: boolean) => void;
@@ -19,6 +17,15 @@ export interface PanelState {
   setCurrentView: (view: ViewType) => void;
 }
 
+/**
+ * Panel-scoped view state and actions.
+ *
+ * Intentionally excludes the per-row volatile fields (`selectedTaskIds`,
+ * `expandedTaskId`): subscribing to those here would re-render every consumer
+ * (TaskList and all rows) on each selection/expansion. Per-row selection and
+ * expansion state is read via {@link usePanelTaskState}, which returns booleans
+ * scoped to a single task so only the affected rows re-render.
+ */
 export function usePanelState(): PanelState {
   const panelId = usePanelId();
 
@@ -27,8 +34,6 @@ export function usePanelState(): PanelState {
     selectedProject: s.selectedProject,
     selectedPerson: s.selectedPerson,
     selectedTag: s.selectedTag,
-    expandedTaskId: s.expandedTaskId,
-    selectedTaskIds: s.selectedTaskIds,
     getFilteredTasks: s.getFilteredTasks,
     expandTask: s.expandTask,
     toggleTaskSelection: s.toggleTaskSelection,
@@ -43,8 +48,6 @@ export function usePanelState(): PanelState {
     selectedProject: s.sidePanelSelectedProject,
     selectedPerson: s.sidePanelSelectedPerson,
     selectedTag: s.sidePanelSelectedTag,
-    expandedTaskId: s.sidePanelExpandedTaskId,
-    selectedTaskIds: s.sidePanelSelectedTaskIds,
     getFilteredTasks: s.getSidePanelFilteredTasks,
     expandTask: s.sidePanelExpandTask,
     toggleTaskSelection: s.sidePanelToggleTaskSelection,
@@ -55,4 +58,29 @@ export function usePanelState(): PanelState {
   })));
 
   return panelId === 'main' ? mainState : sidePanelState;
+}
+
+export interface PanelTaskState {
+  isSelected: boolean;
+  isSoleSelection: boolean;
+  isExpanded: boolean;
+}
+
+/**
+ * Per-row selection/expansion state, scoped to a single task and the active
+ * panel. Returns primitives so a row only re-renders when *its own* selected /
+ * expanded state flips — selecting or expanding one task no longer re-renders
+ * the entire list.
+ */
+export function usePanelTaskState(taskId: string): PanelTaskState {
+  const isMain = usePanelId() === 'main';
+  return useTaskStore(useShallow((s) => {
+    const ids = isMain ? s.selectedTaskIds : s.sidePanelSelectedTaskIds;
+    const expandedId = isMain ? s.expandedTaskId : s.sidePanelExpandedTaskId;
+    return {
+      isSelected: ids.includes(taskId),
+      isSoleSelection: ids.length === 1 && ids[0] === taskId,
+      isExpanded: expandedId === taskId,
+    };
+  }));
 }

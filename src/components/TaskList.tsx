@@ -5,7 +5,7 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from '@dnd-kit/utilities';
 import { useTaskStore } from '../stores/taskStore';
 import { getTaskDate, limitGroupedTasks, groupTasksByCompletionDate, groupTasksByProject } from '../utils/taskGrouping';
-import { usePanelState } from '../hooks/usePanelState';
+import { usePanelState, usePanelTaskState } from '../hooks/usePanelState';
 import { usePanelId } from '../contexts/PanelContext';
 import { TaskItem } from './TaskItem';
 import { BulkActions } from './BulkActions';
@@ -192,8 +192,7 @@ function DroppableViewZone({ viewType, children }: { viewType: string; children:
 // Draggable task item wrapper
 function DraggableTaskItem({ task, showProject }: { task: Task; showProject: boolean }) {
   const panelId = usePanelId();
-  const { expandedTaskId } = usePanelState();
-  const isExpanded = expandedTaskId === task.id;
+  const { isExpanded } = usePanelTaskState(task.id);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `${panelId}-${task.id}`,
     data: { task },
@@ -830,6 +829,12 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
     setSelectedProject,
   } = usePanelState();
   const { selectedPersonMetadata, isLoading, vaultPath, availableProjects, availablePeople, projectColors, tagColors, updateProjectMetadata, recurringTemplates, sidePanelOpen, toggleSidePanel, calendarEnabled, calendarEvents, smartLists, selectedSmartListId, isObsidianVault, editorType, editorCustomCommand } = useTaskStore(useShallow((s) => ({ selectedPersonMetadata: s.selectedPersonMetadata, isLoading: s.isLoading, vaultPath: s.vaultPath, availableProjects: s.availableProjects, availablePeople: s.availablePeople, projectColors: s.projectColors, tagColors: s.tagColors, updateProjectMetadata: s.updateProjectMetadata, recurringTemplates: s.recurringTemplates, sidePanelOpen: s.sidePanelOpen, toggleSidePanel: s.toggleSidePanel, calendarEnabled: s.calendarEnabled, calendarEvents: s.calendarEvents, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId, isObsidianVault: s.isObsidianVault, editorType: s.editorType, editorCustomCommand: s.editorCustomCommand, })));
+  // getFilteredTasks() reads tasks and completion-linger from the store via
+  // getState(), which is not a subscription. usePanelState no longer re-renders
+  // this component on selection/expansion (those are per-row now), so subscribe
+  // explicitly to the data that should refresh the list.
+  useTaskStore((s) => s.tasks);
+  useTaskStore((s) => s.completingTaskIds);
   const tasks = getFilteredTasks();
 
   // Logbook renders incrementally (large histories); reset when leaving the view
