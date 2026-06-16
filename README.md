@@ -13,13 +13,16 @@ Bilingual: supports Dutch and English for natural language date input.
 ## Platform Support
 
 - **macOS**: original supported desktop runtime. The native Calendar integration uses macOS Calendar/EventKit and remains macOS-only.
-- **Windows**: core Markdown task workflows have been verified on a Windows debug build, including first-run vault selection, vault scan, Quick Add, Quick Find, edit/delete/complete persistence, side panel, Agenda drag scheduling, restart persistence, notifications, tray behavior, and deep-link routing. Windows Calendar integration is currently unsupported and disabled with an in-app message.
+- **Windows**: core Markdown task workflows have been verified on a Windows debug build, including first-run vault selection, vault scan, Quick Add, Quick Find, edit/delete/complete persistence, side panel, Agenda drag scheduling, restart persistence, notifications, tray behavior, and deep-link routing. A release NSIS installer also builds successfully. Windows Calendar integration is currently unsupported and disabled with an in-app message.
 - **Linux**: not currently claimed as a verified runtime.
 
-The current Windows smoke artifact is the unsigned NSIS debug installer at
-`src-tauri/target/debug/bundle/nsis/Annado_0.1.2_x64-setup.exe`. Smoke evidence is recorded in
-`.project/projects/annado-windows-compatible/artifacts/windows-core-workflow-smoke3-result.txt`.
-The installer is suitable for local/CI verification only until Windows signing is configured.
+The current Windows artifact is an unsigned release NSIS installer at
+`src-tauri/target/release/bundle/nsis/Annado_0.1.2_x64-setup.exe`. It was produced with
+`npm run tauri -- build` and has SHA-256
+`AD098C52A3E3B6EEB2EF7E2B8DA07419C5E637E4065325A145A048117A7C862A`. Windows smoke evidence is
+recorded in `.project/projects/annado-windows-compatible/artifacts/windows-core-workflow-smoke3-result.txt`.
+The installer is suitable for local/CI verification only until Windows signing and macOS regression
+evidence are completed.
 
 ## How It Works
 
@@ -514,7 +517,7 @@ Windows artifact.
 
 ```
 npm install
-npm run tauri dev
+npm run tauri -- dev
 ```
 
 ### 2. Select your vault
@@ -544,7 +547,7 @@ Annado looks for projects, people, and recurring task templates by matching fold
 ## Building
 
 ```
-npm run tauri build
+npm run tauri -- build
 ```
 
 On Windows, the platform-specific `src-tauri/tauri.windows.conf.json` config builds the NSIS setup
@@ -553,14 +556,16 @@ the installer stays small and downloads WebView2 only when the runtime is missin
 No minimum WebView2 version is pinned because Annado does not currently depend on a known
 version-specific WebView2 feature.
 
-The verified Windows smoke artifact is currently
-`src-tauri/target/debug/bundle/nsis/Annado_0.1.2_x64-setup.exe`, produced by
-`npm run tauri -- bundle --debug --bundles nsis --ci --no-sign`. The Windows core workflow smoke
+The verified Windows artifact is currently
+`src-tauri/target/release/bundle/nsis/Annado_0.1.2_x64-setup.exe`, produced by
+`npm run tauri -- build`. It is a release NSIS installer, 3,101,323 bytes, with SHA-256
+`AD098C52A3E3B6EEB2EF7E2B8DA07419C5E637E4065325A145A048117A7C862A`. The Windows core workflow smoke
 evidence is in `.project/projects/annado-windows-compatible/artifacts/windows-core-workflow-smoke3-result.txt`.
 
-Windows signing is deferred for the first local/CI smoke artifact. Public Windows distribution must
-add a signing setup, for example `bundle.windows.signCommand` or certificate-based signing in the
-Windows bundle config, before treating the installer as a trusted release artifact.
+Windows signing is deferred for the first local/CI artifact. Public Windows distribution must add a
+signing setup, for example `bundle.windows.signCommand` or certificate-based signing in the Windows
+bundle config, before treating the installer as a trusted release artifact. Final compatibility
+closeout is also waiting on macOS regression evidence from a macOS host.
 
 The Windows icon is `src-tauri/icons/icon.ico`; it includes the standard 16, 24, 32, 48, 64, and
 256px layers required by Tauri's Windows packaging guidance. The shared icon list in
