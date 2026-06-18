@@ -69,13 +69,66 @@ Annado reads and writes this inline markdown format:
 | `!(1-3)` | `!(1)` | Priority (1 = highest) |
 | `#tag` | `#work` | Tag |
 | `[[WikiLink]]` | `[[Project Name]]` | Project or person link |
-| `@recurring(id)` | `@recurring(abc123)` | Recurring template reference |
+| `@repeat(...)` | `@repeat(every 2 weeks)` | Recurrence rule (rolls forward on completion) |
 | `@created(date)` | `@created(2025-02-14)` | Creation date |
 | `@completed(date)` | `@completed(2025-02-16)` | Completion date |
 
 Checklist sub-items (`- [ ] sub-task`) can be toggled directly in Annado — the change persists to the markdown file.
 
 ![Expanded task with a checklist](docs/images/checklist.png)
+
+---
+
+## Task Format Compatibility
+
+The syntax above is Annado's **native** format, but it isn't the only one Annado understands. If you already keep tasks in the [Obsidian Tasks](https://publish.obsidian.md/tasks/) emoji format or the [Dataview](https://blacksmithgu.github.io/obsidian-dataview/) inline-field format, Annado works with those too.
+
+The rule is simple: **read any, write one.**
+
+- **Read** — when Annado parses your vault it recognizes the markers of *all three* formats on every line, so an existing or mixed vault just works without conversion.
+- **Write** — when Annado edits or creates a task it writes the **one** format you've chosen (Settings → General → *Task format*).
+
+On first run Annado scans your vault, tallies which dialect your tasks predominantly use, and pre-selects it for you. You can change it any time. However, conversion is lazy, meaning each task keeps its existing markers until the next time you edit it.
+
+### Field mapping
+
+How each piece of task metadata is written in each format:
+
+| Concept | Annado (native) | Obsidian Tasks | Dataview |
+|---|---|---|---|
+| Scheduled / when | `@when(d)` | `⏳ d` | `[scheduled:: d]` |
+| Due / deadline | `@due(d)` | `📅 d` | `[due:: d]` |
+| Created | `@created(d)` | `➕ d` | `[created:: d]` |
+| Completed | `@completed(d)` | `✅ d` | `[completion:: d]` |
+| Priority | `!(1)` `!(2)` `!(3)` | `⏫` `🔼` `🔽` | `[priority:: high/medium/low]` |
+| Recurrence | `@repeat(rule)` | `🔁 rule` | `[repeat:: rule]` |
+| Time of day | `@time(t)` | *(no equivalent)* | `[time:: t]` |
+| Duration | `@duration(d)` | *(no equivalent)* | `[duration:: d]` |
+| Tags | `#tag` | `#tag` | `#tag` |
+| Project / person | `[[Link]]` | `[[Link]]` | `[[Link]]` |
+
+On **read**, Annado is more generous than this table shows: it also maps Obsidian Tasks' `🛫` (start) and Dataview's `[start:: …]` onto *when*, and it accepts the two extra Tasks priority emoji (`🔺` highest, `⏬` lowest), clamping them to high/low since Annado has three priority levels rather than five.
+
+### Priorities
+
+Annado has **three** priority levels; Obsidian Tasks has five. The mapping is:
+
+| Annado | Obsidian Tasks (read) | Obsidian Tasks (write) | Dataview |
+|---|---|---|---|
+| `!(1)` — high | `⏫` or `🔺` | `⏫` | `high` |
+| `!(2)` — medium | `🔼` | `🔼` | `medium` |
+| `!(3)` — low | `🔽` or `⏬` | `🔽` | `low` |
+
+Reading clamps the two outer Tasks levels (`🔺` → high, `⏬` → low). Writing only ever emits the three middle emoji, so a `🔺`-priority task read from an Obsidian-Tasks vault becomes `⏫` if Annado rewrites that line. The other two formats are lossless — Annado and Dataview both map exactly to three levels.
+
+### Limitations & things to know
+
+- **Time and duration only exist in two of the three formats.** Obsidian Tasks has no concept of a time-of-day or an estimated duration. So when your chosen format is Obsidian Tasks, those two fields fall back to Annado's own `@time(...)` / `@duration(...)` markers rather than being dropped — the rest of the line is still pure Tasks emoji. Annado native and Dataview both express them directly.
+- **Recurrence is partly modeled, partly preserved.** Annado fully understands the interval subset — `every [N] day|week|month|year[s]`, optionally with ` when done` (next occurrence counts from the completion date instead of the scheduled date). It reads, writes, and rolls these forward on completion in any format. Richer Obsidian Tasks rules — `every weekday`, `every week on Monday`, `every month on the 3rd Thursday`, ordinal monthly/yearly — are **round-trip-preserved**: Annado keeps the rule string verbatim and writes it back unchanged (so the Obsidian Tasks plugin still advances it), but Annado itself won't compute their next occurrence and shows them read-only in its recurrence editor.
+- **Recurrence is roll-forward, not pre-generated.** Completing a recurring task writes the *next* single occurrence and marks the current one done. Annado does not pre-generate a long list of future instances, so Upcoming shows the next occurrence rather than every future one. (This replaces the old template-based engine and its `@recurring(id)` marker — see the migration tool in Settings if you have a legacy vault.)
+- **Unknown markers are never clobbered.** Any marker Annado doesn't recognize — a plugin field it doesn't model, a stray emoji — is left untouched on the line when Annado rewrites it.
+- **The format setting is vault-wide.** It's a single choice per vault, not per-file or per-task.
+- **Tags and wikilinks are identical across all three formats** — `#tag` and `[[Link]]` are plain Obsidian syntax, so they need no translation and are never rewritten.
 
 ---
 
@@ -308,6 +361,7 @@ Open a second, independent task view alongside the main view with `Cmd+\`. The s
 - **Wiki-links**: `[[Project]]` and `[[Person]]` links are parsed and rendered as navigation links in the UI
 - **Vault detection**: Annado detects whether the folder is an Obsidian vault (`.obsidian/` present) and adapts — e.g., daily-note settings are read from Obsidian's own config
 - **Pick your editor**: jump-to-source can open the system default, VS Code, Sublime, or a custom command instead of Obsidian (Settings → General)
+- **Your task format**: Annado reads Obsidian Tasks and Dataview tasks alongside its own, and writes whichever you pick — see [Task Format Compatibility](#task-format-compatibility)
 
 ---
 
