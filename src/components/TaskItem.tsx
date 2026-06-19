@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Task, getWhenType } from '../types/task';
 import { useTaskStore } from '../stores/taskStore';
 import { usePanelState, usePanelTaskState } from '../hooks/usePanelState';
+import { useConfirmableDelete } from '../hooks/useConfirmableDelete';
 import { useWikilinkNames } from '../contexts/WikilinkNamesContext';
 import { PRIORITY_CONFIG, resolveTagColor } from '../utils/projectColors';
 import { formatWhenDisplay, formatDeadlineCountdown, getDeadlineUrgency, formatDateForDisplay, getToday } from '../utils/dates';
@@ -40,8 +41,27 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
     isObsidianVault: s.isObsidianVault,
   })));
 
+  const { requestDelete, confirmModal } = useConfirmableDelete(task);
+
   const whenType = getWhenType(task.when);
   const rowRef = useRef<HTMLDivElement>(null);
+
+  // Delete-button placement (AC-9). The title line hugs its content; when there
+  // is room after it the trash icon sits just past the text, but once the title
+  // (nearly) fills the row the icon right-aligns and overlays the tail instead.
+  const titleWrapRef = useRef<HTMLDivElement>(null);
+  const [titleFillsWidth, setTitleFillsWidth] = useState(false);
+  useLayoutEffect(() => {
+    const el = titleWrapRef.current;
+    const container = el?.parentElement;
+    if (!el || !container) return;
+    // Overlay once the gap left after the title is too small to seat the icon.
+    const measure = () => setTitleFillsWidth(container.clientWidth - el.offsetWidth < 28);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [task.title, task.tags.length]);
 
   // Same wikilink/link context the expanded renderers use, so titles render
   // markdown identically. The name Sets come from context (built once per list).
@@ -203,12 +223,20 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
 
         {/* Title content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
+          {/*
+            The title line shrinks to its content width (`w-fit max-w-full`), so
+            the delete button anchored to its right edge sits right at the END of
+            a short title (close to the text), and overlays the text tail —
+            right-aligned to the container — once the title fills the full width.
+            Absolute positioning means the button never reflows the row on hover,
+            which matters for the virtualized, content-visibility list.
+          */}
+          <div ref={titleWrapRef} className="relative flex w-fit max-w-full items-center gap-2 flex-wrap">
             {!task.completed && getPriorityIndicator()}
             <InlineMarkdown
               text={task.title}
               wikilinkProps={titleWikilinkProps}
-              className={`text-[14px] leading-[1.4] ${
+              className={`min-w-0 break-words text-[14px] leading-[1.4] ${
                 task.completed
                   ? 'line-through text-[#A0A0A0] dark:text-[#666]'
                   : 'text-black/85 dark:text-white/85'
@@ -237,6 +265,35 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
                 </button>
               );
             })}
+
+            {/*
+              Delete affordance — outline trash icon (Feather "trash-2", matching
+              the app's 24×24 stroke iconography). Absolute (not a flex sibling)
+              so it never reflows the row on hover. Placement is driven by
+              titleFillsWidth: just past the text when there's room, else
+              right-aligned overlaying the tail (a left fade keeps it legible).
+            */}
+            <button
+              type="button"
+              aria-label="Delete task"
+              title="Delete task"
+              onClick={(e) => {
+                e.stopPropagation();
+                requestDelete();
+              }}
+              className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity flex items-center text-[#9A9AA0] hover:text-danger dark:text-[#777] dark:hover:text-danger ${
+                titleFillsWidth
+                  ? 'right-0 justify-end pl-7 bg-gradient-to-l from-[#F5F5F5] via-[#F5F5F5] to-transparent dark:from-[#252525] dark:via-[#252525] dark:to-transparent'
+                  : 'left-full ml-2'
+              }`}
+            >
+              <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                <path d="M10 11v6M14 11v6" />
+              </svg>
+            </button>
           </div>
 
           {/* Checklist indicator */}
@@ -278,6 +335,7 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
           {getDeadlineDisplay()}
         </div>
       </div>
+      {confirmModal}
     </div>
   );
 }
