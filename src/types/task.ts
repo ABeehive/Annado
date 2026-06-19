@@ -111,6 +111,17 @@ export interface CreateTaskPayload {
   when?: WhenValue;
 }
 
+/**
+ * Snapshot of a deleted task's raw markdown block and original file position,
+ * returned by the `delete_task` command and passed back to `restore_task` to
+ * make a delete faithfully reversible (powers ⌘Z undo).
+ */
+export interface DeletedTaskSnapshot {
+  filePath: string;
+  lineNumber: number;
+  rawBlock: string;
+}
+
 export type ViewType = 'inbox' | 'today' | 'upcoming' | 'anytime' | 'someday' | 'logbook' | 'recurring' | 'wrapped' | 'agenda' | 'added-today' | 'smart-list' | 'review';
 
 export interface SmartListFilter {

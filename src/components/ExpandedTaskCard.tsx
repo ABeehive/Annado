@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Task, getWhenType, WhenValue } from '../types/task';
 import { useTaskStore } from '../stores/taskStore';
 import { usePanelState } from '../hooks/usePanelState';
+import { useConfirmableDelete } from '../hooks/useConfirmableDelete';
 import { useWikilinkNames } from '../contexts/WikilinkNamesContext';
 import { PRIORITY_CONFIG } from '../utils/projectColors';
 import { formatWhenDisplay, formatDeadlineCountdown, getDeadlineUrgency, formatDateForDisplay } from '../utils/dates';
@@ -58,6 +59,7 @@ export function ExpandedTaskCard({ task, isCollapsing, isSoleSelection }: Expand
   })));
   const whenPickerForceOpen = useTaskStore((s) => s.taskIdWithOpenWhenPicker === task.id);
   const deadlinePickerForceOpen = useTaskStore((s) => s.taskIdWithOpenDeadlinePicker === task.id);
+  const { requestDelete, confirmModal } = useConfirmableDelete(task);
 
   const whenType = getWhenType(task.when);
   const expandedRef = useRef<HTMLDivElement>(null);
@@ -513,8 +515,25 @@ export function ExpandedTaskCard({ task, isCollapsing, isSoleSelection }: Expand
                 )}
               </div>
 
-              {/* Right side - editor link */}
+              {/* Right side - delete + editor link */}
               <div className="flex items-center gap-3 shrink-0">
+                {/* Destructive delete action (undoable via ⌘Z) */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    requestDelete();
+                  }}
+                  className="flex items-center gap-1 text-[11px] text-danger hover:text-danger-dark transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                    <path d="M10 11v6M14 11v6" />
+                  </svg>
+                  Delete
+                </button>
                 {vaultPath && (
                   <button
                     onClick={() => openInEditor(vaultPath, task.filePath, task.lineNumber, isObsidianVault, editorType, editorCustomCommand)}
@@ -531,6 +550,7 @@ export function ExpandedTaskCard({ task, isCollapsing, isSoleSelection }: Expand
           </div>
         </div>
       </div>
+      {confirmModal}
     </div>
   );
 }

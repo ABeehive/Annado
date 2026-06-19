@@ -2577,8 +2577,12 @@ fn sanitize_filename(name: &str) -> String {
 }
 
 impl Vault {
-    /// Delete a task by removing its line from the markdown file
-    pub fn delete_task(&self, task_id: &str) -> Result<(), String> {
+    /// Delete a task by removing its line from the markdown file.
+    ///
+    /// Returns a [`DeletedTaskSnapshot`] capturing the removed markdown block and
+    /// its original 1-based line number, so the delete can be faithfully reversed
+    /// via [`Vault::restore_task`].
+    pub fn delete_task(&self, task_id: &str) -> Result<crate::commands::DeletedTaskSnapshot, String> {
         // Find the task by ID to get file path and line number
         let task = self.get_task(task_id).ok_or("Task not found")?;
 
@@ -2630,6 +2634,10 @@ impl Vault {
             end_of_content -= 1;
         }
 
+        // Capture the exact block being removed so the delete can be reversed
+        // byte-for-byte by re-inserting it at the same index.
+        let raw_block = lines[line_index..end_of_content].join("\n");
+
         // Create new content without the task and its associated content
         let mut new_lines: Vec<&str> = Vec::new();
         for (i, line) in lines.iter().enumerate() {
@@ -2638,8 +2646,12 @@ impl Vault {
             }
         }
 
-        // Write back to file
-        let new_content = new_lines.join("\n");
+        // Write back to file, preserving the original trailing-newline state so a
+        // subsequent restore_task can reproduce the file byte-for-byte.
+        let mut new_content = new_lines.join("\n");
+        if content.ends_with('\n') {
+            new_content.push('\n');
+        }
         fs::write(&task.file_path, new_content)
             .map_err(|e| format!("Failed to write file: {}", e))?;
 
@@ -2649,7 +2661,86 @@ impl Vault {
             task_map.remove(task_id);
         }
 
-        Ok(())
+        Ok(crate::commands::DeletedTaskSnapshot {
+            file_path: task.file_path.clone(),
+            line_number: line_index + 1,
+            raw_block,
+        })
+    }
+
+    /// Re-insert a previously deleted task block at its original file position,
+    /// re-parse it, refresh the in-memory cache for that file, and return the
+    /// restored [`Task`].
+    ///
+    /// Re-inserting at the original 0-based index `line_number - 1` restores the
+    /// original line numbers, so the restored task (and any tasks below it)
+    /// recover their original ids (ids derive from `file_path:line_number`).
+    pub fn restore_task(
+        &self,
+        snapshot: &crate::commands::DeletedTaskSnapshot,
+    ) -> Result<Task, String> {
+        let today = Local::now().date_naive();
+
+        // Validate file path is within vault
+        self.validate_path_in_vault(&snapshot.file_path)?;
+
+        // Read the (post-delete) file
+        let content = fs::read_to_string(&snapshot.file_path)
+            .map_err(|e| format!("Failed to read file: {}", e))?;
+
+        // Whether the file's content ended with a trailing newline, so we can
+        // reconstruct it faithfully after splitting on '\n'.
+        let had_trailing_newline = content.ends_with('\n');
+        let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
+
+        // The block was captured via `join("\n")`, so split it back the same way.
+        let block_lines: Vec<String> =
+            snapshot.raw_block.split('\n').map(|l| l.to_string()).collect();
+
+        // Insert at the original 0-based index; clamp to len (append) if the file
+        // shrank below the original position.
+        let insert_at = (snapshot.line_number - 1).min(lines.len());
+        for (offset, line) in block_lines.into_iter().enumerate() {
+            lines.insert(insert_at + offset, line);
+        }
+
+        // Rebuild content, preserving the original trailing-newline state.
+        let mut new_content = lines.join("\n");
+        if had_trailing_newline {
+            new_content.push('\n');
+        }
+
+        fs::write(&snapshot.file_path, &new_content)
+            .map_err(|e| format!("Failed to write file: {}", e))?;
+
+        // Re-parse the file and enrich exactly as scan() does, so the restored
+        // task carries projects/persons/areas and a deterministic id.
+        let persons = self.get_all_persons();
+        let person_names: std::collections::HashSet<String> =
+            persons.iter().map(|p| p.name.clone()).collect();
+        let projects = self.get_all_projects();
+        let project_names: std::collections::HashSet<String> =
+            projects.iter().map(|p| p.name.clone()).collect();
+
+        let mut tasks = parser::parse_file(&new_content, &snapshot.file_path, today);
+        apply_areas_project(&mut tasks, &self.folder_paths.areas_pattern);
+        resolve_wikilinks(&mut tasks, &person_names, &project_names);
+
+        // Refresh the cache for this file (mirror the watcher's diff-into-cache).
+        {
+            let mut task_map = self.tasks.write();
+            task_map.retain(|_, t| t.file_path != snapshot.file_path);
+            for task in &tasks {
+                task_map.insert(task.id.clone(), task.clone());
+            }
+        }
+
+        // The restored task is the one parsed at the re-insertion line.
+        let restored_line = snapshot.line_number;
+        tasks
+            .into_iter()
+            .find(|t| t.line_number == restored_line)
+            .ok_or_else(|| "Restored task not found after re-parse".to_string())
     }
 }
 
@@ -2789,5 +2880,87 @@ mod tests {
         let line =
             parser::format_task_line(&task, next, None, &std::collections::HashSet::new(), crate::taskformat::TaskFormat::Annado);
         assert!(line.contains("@repeat(every 2 weeks)"), "line: {line}");
+    }
+
+    /// Create a unique temporary vault directory on disk and return a Vault over it.
+    /// (No tempfile crate dependency: we build a uniquely-named dir under the
+    /// OS temp dir ourselves and clean it up in the test.)
+    fn make_temp_vault() -> (PathBuf, Vault) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::time::{SystemTime, UNIX_EPOCH};
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("annado_vault_test_{}_{}", nanos, n));
+        fs::create_dir_all(&dir).expect("create temp vault dir");
+        let vault = Vault::new_with_folder_paths(dir.clone(), FolderPaths::default(), false);
+        (dir, vault)
+    }
+
+    #[test]
+    fn test_delete_then_restore_is_byte_identical_and_keeps_id() {
+        let (dir, vault) = make_temp_vault();
+
+        // A task with notes + a checklist item, surrounded by other content so
+        // the re-insertion index matters.
+        let note_path = dir.join("Tasks.md");
+        // No symbolic dates (@when(today)/@when(tomorrow)) so scan()'s
+        // normalization leaves the file untouched and byte-identity is exact.
+        let original = "\
+# Tasks
+
+- [ ] First task
+- [ ] Buy groceries @when(2026-01-15) #errand
+    Some notes about the groceries.
+    - [ ] Milk
+    - [ ] Eggs
+- [ ] Third task
+";
+        fs::write(&note_path, original).expect("write note");
+
+        // Populate the cache and capture the task's real (positional) id.
+        let tasks = vault.scan();
+        let target = tasks
+            .iter()
+            .find(|t| t.title.contains("Buy groceries"))
+            .expect("target task present after scan");
+        let original_id = target.id.clone();
+        assert!(!target.checklist.is_empty(), "task should have a checklist");
+
+        // Read the on-disk content as the pre-delete baseline for byte-identity.
+        let before_delete = fs::read_to_string(&note_path).expect("read before delete");
+        assert_eq!(
+            before_delete, original,
+            "scan() must not mutate a file without symbolic dates"
+        );
+
+        // Delete -> snapshot, then restore from the snapshot.
+        let snapshot = vault.delete_task(&original_id).expect("delete_task");
+        let after_delete = fs::read_to_string(&note_path).expect("read after delete");
+        assert_ne!(
+            before_delete, after_delete,
+            "delete should change file content"
+        );
+
+        let restored = vault.restore_task(&snapshot).expect("restore_task");
+
+        // (a) File content is byte-identical to before the delete.
+        let after_restore = fs::read_to_string(&note_path).expect("read after restore");
+        assert_eq!(
+            before_delete, after_restore,
+            "restore must reproduce the file byte-for-byte"
+        );
+
+        // (b) The restored task recovers its original id.
+        assert_eq!(
+            restored.id, original_id,
+            "restored task must recover its original id"
+        );
+
+        // Cleanup.
+        let _ = fs::remove_dir_all(&dir);
     }
 }

@@ -5,7 +5,7 @@ import { storeError } from '../storeUtils';
 import { _vaultVersion } from './settingsSlice';
 import { filterTasks, filterTasksForSmartList, withCompletionLinger } from '../filterTasks';
 import {
-  Task, TaskUpdatePayload, CreateTaskPayload, ViewType,
+  Task, TaskUpdatePayload, CreateTaskPayload, DeletedTaskSnapshot, ViewType,
   ProjectInfo, PersonInfo, PersonMetadata, UpdateProjectMetadataPayload,
   MigrationReport, TagInfo,
 } from '../../types/task';
@@ -61,6 +61,7 @@ export interface TaskSlice {
   renameChecklistItem: (taskId: string, itemIndex: number, newTitle: string) => Promise<void>;
   deleteChecklistItem: (taskId: string, itemIndex: number) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
+  restoreTask: (snapshot: DeletedTaskSnapshot) => Promise<void>;
   setupEventListeners: () => Promise<() => void>;
   updateProjectMetadata: (payload: UpdateProjectMetadataPayload) => Promise<void>;
   createProject: (name: string, parentFolder: string | null, meta: { description?: string; deadline?: string; persons?: string[]; milestones?: Array<{ name: string; end?: string }> }) => Promise<void>;
@@ -449,9 +450,28 @@ export const createTaskSlice: SliceCreator<TaskSlice> = (set, get) => {
       expandedTaskId: state.expandedTaskId === id ? null : state.expandedTaskId,
     }));
     try {
-      await invoke('delete_task', { id });
+      // The backend hands back a snapshot of the removed markdown block so the
+      // delete can be faithfully reversed via restore_task (⌘Z undo).
+      const snapshot = await invoke<DeletedTaskSnapshot>('delete_task', { id });
+      pushUndo(() => get().restoreTask(snapshot));
     } catch (error) {
       set({ tasks: previousTasks });
+      storeError(set, error);
+    }
+  },
+
+  restoreTask: async (snapshot) => {
+    try {
+      const restored = await invoke<Task>('restore_task', { snapshot });
+      set((state) => {
+        const exists = state.tasks.some((t: Task) => t.id === restored.id);
+        return {
+          tasks: exists
+            ? state.tasks.map((t: Task) => (t.id === restored.id ? restored : t))
+            : [...state.tasks, restored],
+        };
+      });
+    } catch (error) {
       storeError(set, error);
     }
   },

@@ -668,9 +668,25 @@ pub fn open_file_in_editor(
     Ok(())
 }
 
+/// Snapshot of a deleted task's raw markdown block and its original file
+/// position, returned by `delete_task` and consumed by `restore_task` to make
+/// the delete faithfully reversible (powers ⌘Z undo in the frontend).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletedTaskSnapshot {
+    pub file_path: String,
+    pub line_number: usize,
+    pub raw_block: String,
+}
+
 #[tauri::command]
-pub fn delete_task(id: String) -> Result<(), String> {
+pub fn delete_task(id: String) -> Result<DeletedTaskSnapshot, String> {
     with_vault_result(|vault| vault.delete_task(&id))
+}
+
+#[tauri::command]
+pub fn restore_task(snapshot: DeletedTaskSnapshot) -> Result<Task, String> {
+    with_vault_result(|vault| vault.restore_task(&snapshot))
 }
 
 #[tauri::command]
