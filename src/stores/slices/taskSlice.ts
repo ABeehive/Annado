@@ -10,6 +10,7 @@ import {
   MigrationReport, TagInfo,
 } from '../../types/task';
 import { formatDateForStorage, getToday } from '../../utils/dates';
+import { flattenToVisibleOrder, rangeBetween } from '../../utils/selection';
 
 export interface UndoEntry {
   /** Reverts the recorded action (a normal backend write, so it persists) */
@@ -24,6 +25,8 @@ export interface TaskSlice {
   undoLastAction: () => Promise<void>;
   selectedTaskId: string | null;
   selectedTaskIds: string[];
+  /** Anchor for shift-click range selection (the last task selected without shift). */
+  selectionAnchorId: string | null;
   expandedTaskId: string | null;
   taskIdWithOpenWhenPicker: string | null;
   taskIdWithOpenDeadlinePicker: string | null;
@@ -47,6 +50,10 @@ export interface TaskSlice {
   openWhenPicker: (id: string | null) => void;
   openDeadlinePicker: (id: string | null) => void;
   clearSelection: () => void;
+  selectTaskRange: (toId: string) => void;
+  selectAllVisible: () => void;
+  getOrderedVisibleTaskIds: () => string[];
+  deleteMultipleTasks: (ids: string[]) => Promise<void>;
   setCurrentView: (view: ViewType) => void;
   setSelectedProject: (project: string | null) => void;
   setSelectedPerson: (person: string | null) => void;
@@ -138,6 +145,7 @@ export const createTaskSlice: SliceCreator<TaskSlice> = (set, get) => {
 
   selectedTaskId: null,
   selectedTaskIds: [],
+  selectionAnchorId: null,
   expandedTaskId: null,
   taskIdWithOpenWhenPicker: null,
   taskIdWithOpenDeadlinePicker: null,
@@ -209,7 +217,7 @@ export const createTaskSlice: SliceCreator<TaskSlice> = (set, get) => {
   },
 
   selectTask: (id) => {
-    set({ selectedTaskId: id, selectedTaskIds: id ? [id] : [] });
+    set({ selectedTaskId: id, selectedTaskIds: id ? [id] : [], selectionAnchorId: id });
   },
 
   toggleTaskSelection: (id, multiSelect = false) => {
@@ -222,6 +230,7 @@ export const createTaskSlice: SliceCreator<TaskSlice> = (set, get) => {
         sidePanelSelectedTaskIds: [],
         activePanel: 'main',
         selectedTaskId: newIds.length === 1 ? newIds[0] : null,
+        selectionAnchorId: id,
       });
     } else {
       const isSelected = currentIds.length === 1 && currentIds[0] === id;
@@ -230,6 +239,7 @@ export const createTaskSlice: SliceCreator<TaskSlice> = (set, get) => {
         selectedTaskId: isSelected ? null : id,
         sidePanelSelectedTaskIds: [],
         activePanel: 'main',
+        selectionAnchorId: isSelected ? null : id,
       });
     }
   },
@@ -254,7 +264,68 @@ export const createTaskSlice: SliceCreator<TaskSlice> = (set, get) => {
     : { taskIdWithOpenDeadlinePicker: null }),
 
   clearSelection: () => {
-    set({ selectedTaskId: null, selectedTaskIds: [], expandedTaskId: null });
+    set({ selectedTaskId: null, selectedTaskIds: [], selectionAnchorId: null, expandedTaskId: null });
+  },
+
+  // The visible task ids in render order, used by range-select and select-all so
+  // both follow exactly what the list shows top-to-bottom.
+  getOrderedVisibleTaskIds: () => {
+    const s = get();
+    const isGrouped = !s.selectedProject && !s.selectedPerson && !s.selectedTag
+      && s.currentView !== 'logbook' && s.currentView !== 'upcoming';
+    return flattenToVisibleOrder(s.getFilteredTasks(), {
+      isGrouped,
+      isTodayView: s.currentView === 'today',
+    }).map((t) => t.id);
+  },
+
+  // Shift-click: select the inclusive range from the anchor to `toId` in visible
+  // order, replacing the current selection. With no anchor, behaves as a single
+  // select and seeds the anchor.
+  selectTaskRange: (toId) => {
+    const s = get();
+    const anchorId = (s.selectionAnchorId as string | null) ?? toId;
+    const ids = rangeBetween(s.getOrderedVisibleTaskIds(), anchorId, toId);
+    set({
+      selectedTaskIds: ids,
+      selectedTaskId: ids.length === 1 ? ids[0] : null,
+      selectionAnchorId: anchorId,
+      sidePanelSelectedTaskIds: [],
+      activePanel: 'main',
+    });
+  },
+
+  selectAllVisible: () => {
+    const ids = get().getOrderedVisibleTaskIds();
+    set({
+      selectedTaskIds: ids,
+      selectedTaskId: ids.length === 1 ? ids[0] : null,
+      selectionAnchorId: ids[0] ?? null,
+      sidePanelSelectedTaskIds: [],
+      activePanel: 'main',
+    });
+  },
+
+  // Batched optimistic delete: one local removal, then the backend deletes run in
+  // parallel; on failure the whole batch rolls back.
+  deleteMultipleTasks: async (ids) => {
+    const idSet = new Set(ids);
+    if (idSet.size === 0) return;
+    const previousTasks = get().tasks as Task[];
+    set((state) => ({
+      tasks: state.tasks.filter((t: Task) => !idSet.has(t.id)),
+      selectedTaskId: state.selectedTaskId && idSet.has(state.selectedTaskId) ? null : state.selectedTaskId,
+      selectedTaskIds: state.selectedTaskIds.filter((tid: string) => !idSet.has(tid)),
+      sidePanelSelectedTaskIds: state.sidePanelSelectedTaskIds.filter((tid: string) => !idSet.has(tid)),
+      expandedTaskId: state.expandedTaskId && idSet.has(state.expandedTaskId) ? null : state.expandedTaskId,
+      selectionAnchorId: state.selectionAnchorId && idSet.has(state.selectionAnchorId) ? null : state.selectionAnchorId,
+    }));
+    try {
+      await Promise.all([...idSet].map((id) => invoke('delete_task', { id })));
+    } catch (error) {
+      set({ tasks: previousTasks });
+      storeError(set, error);
+    }
   },
 
   setCurrentView: (view) => {

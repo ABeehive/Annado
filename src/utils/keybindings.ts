@@ -17,7 +17,7 @@ export const KEYBINDING_DEFAULTS: Record<string, string> = {
   navigateUp: 'ctrl+k', globalQuickAdd: 'meta+shift+space', globalShowApp: 'meta+shift+a',
   showWhen: 'meta+s', showDeadline: 'meta+d', startToday: 'meta+t',
   deleteTask: 'meta+backspace', completeTask: 'meta+k', toggleSidePanel: 'meta+\\',
-  undo: 'meta+z',
+  undo: 'meta+z', selectAll: 'meta+a',
   viewInbox: 'meta+1', viewToday: 'meta+2', viewAgenda: 'meta+3',
   viewUpcoming: 'meta+4', viewAnytime: 'meta+5', viewSomeday: 'meta+6',
   viewLogbook: 'meta+7', viewRecurring: 'meta+8', viewWrapped: 'meta+9',

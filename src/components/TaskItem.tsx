@@ -29,7 +29,7 @@ interface CollapsedTaskRowProps {
  * only when the row is expanded.
  */
 function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLingering }: CollapsedTaskRowProps) {
-  const { toggleTaskSelection, expandTask, setSelectedPerson, setSelectedProject, setSelectedTag, currentView } = usePanelState();
+  const { toggleTaskSelection, selectTaskRange, expandTask, setSelectedPerson, setSelectedProject, setSelectedTag, currentView } = usePanelState();
   const { personNames, projectNames } = useWikilinkNames();
   const { toggleTaskComplete, updateTask, availableProjects, projectColors, tagColors, isObsidianVault } = useTaskStore(useShallow((s) => ({
     toggleTaskComplete: s.toggleTaskComplete,
@@ -85,8 +85,17 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
   }, [isSoleSelection]);
 
   const handleClick = (e: React.MouseEvent) => {
-    // Single click = select/highlight
-    toggleTaskSelection(task.id, e.metaKey || e.ctrlKey);
+    // Shift = range-select from the anchor; Cmd/Ctrl = toggle; plain = single select.
+    if (e.shiftKey) {
+      selectTaskRange(task.id);
+    } else {
+      toggleTaskSelection(task.id, e.metaKey || e.ctrlKey);
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Shift-click would otherwise start a native text selection across rows.
+    if (e.shiftKey) e.preventDefault();
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
@@ -163,6 +172,7 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
       ref={rowRef}
       className={`task-row-cv group cursor-pointer transition-all ${cardClasses}${isLingering ? ' task-completing' : ''}`}
       onClick={handleClick}
+      onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
     >
       <div className="flex items-start gap-3">

@@ -11,6 +11,8 @@ export interface PanelState {
   getFilteredTasks: () => Task[];
   expandTask: (id: string | null) => void;
   toggleTaskSelection: (id: string, multiSelect?: boolean) => void;
+  selectTaskRange: (toId: string) => void;
+  selectAllVisible: () => void;
   setSelectedProject: (project: string | null) => void;
   setSelectedPerson: (person: string | null) => void;
   setSelectedTag: (tag: string | null) => void;
@@ -37,6 +39,8 @@ export function usePanelState(): PanelState {
     getFilteredTasks: s.getFilteredTasks,
     expandTask: s.expandTask,
     toggleTaskSelection: s.toggleTaskSelection,
+    selectTaskRange: s.selectTaskRange,
+    selectAllVisible: s.selectAllVisible,
     setSelectedProject: s.setSelectedProject,
     setSelectedPerson: s.setSelectedPerson,
     setSelectedTag: s.setSelectedTag,
@@ -51,6 +55,8 @@ export function usePanelState(): PanelState {
     getFilteredTasks: s.getSidePanelFilteredTasks,
     expandTask: s.sidePanelExpandTask,
     toggleTaskSelection: s.sidePanelToggleTaskSelection,
+    selectTaskRange: s.sidePanelSelectTaskRange,
+    selectAllVisible: s.sidePanelSelectAllVisible,
     setSelectedProject: s.setSidePanelSelectedProject,
     setSelectedPerson: s.setSidePanelSelectedPerson,
     setSelectedTag: s.setSidePanelSelectedTag,

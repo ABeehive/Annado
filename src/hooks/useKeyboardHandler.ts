@@ -66,6 +66,18 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
           useTaskStore.getState().undoLastAction();
           return;
         }
+        // Select all visible tasks — never while typing (text fields keep native select-all)
+        if (
+          matchesKeybinding(e, keybindings.selectAll || 'meta+a') &&
+          !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+        ) {
+          e.preventDefault();
+          const { isSide } = getActivePanelContext();
+          const state = useTaskStore.getState();
+          if (isSide) state.sidePanelSelectAllVisible();
+          else state.selectAllVisible();
+          return;
+        }
       }
 
       // Cmd+N to open quick add
@@ -146,7 +158,7 @@ export function useKeyboardHandler(opts: KeyboardHandlerOptions) {
         const { selectedIds, expandedId } = getActivePanelContext();
         const targetIds = selectedIds.length > 0 ? selectedIds : (expandedId ? [expandedId] : (state.selectedTaskId ? [state.selectedTaskId] : []));
         if (targetIds.length === 0) return;
-        const doDelete = () => { for (const id of targetIds) state.deleteTask(id); };
+        const doDelete = () => { void state.deleteMultipleTasks(targetIds); };
         if (state.confirmDelete) {
           const msg = targetIds.length === 1 ? 'Delete this task?' : `Delete ${targetIds.length} tasks?`;
           setConfirmModal({ message: msg, onConfirm: doDelete });

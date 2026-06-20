@@ -2,6 +2,7 @@ import type { SliceCreator } from './types';
 import { persist } from '../storeUtils';
 import type { ViewType, Task } from '../../types/task';
 import { filterTasks, withCompletionLinger } from '../filterTasks';
+import { flattenToVisibleOrder, rangeBetween } from '../../utils/selection';
 
 export interface QuickAddPrefill {
   title?: string;
@@ -37,6 +38,7 @@ export interface PanelSlice {
   sidePanelSelectedTag: string | null;
   sidePanelExpandedTaskId: string | null;
   sidePanelSelectedTaskIds: string[];
+  sidePanelSelectionAnchorId: string | null;
   quickAddOpen: boolean;
   quickAddPrefill: QuickAddPrefill | null;
 
@@ -50,6 +52,9 @@ export interface PanelSlice {
   setSidePanelSelectedTag: (tag: string | null) => void;
   sidePanelExpandTask: (id: string | null) => void;
   sidePanelToggleTaskSelection: (id: string, multiSelect?: boolean) => void;
+  sidePanelSelectTaskRange: (toId: string) => void;
+  sidePanelSelectAllVisible: () => void;
+  getSidePanelOrderedVisibleTaskIds: () => string[];
   getSidePanelFilteredTasks: () => Task[];
   openQuickAdd: (prefill?: QuickAddPrefill) => void;
   closeQuickAdd: () => void;
@@ -65,6 +70,7 @@ export const createPanelSlice: SliceCreator<PanelSlice> = (set, get) => ({
   sidePanelSelectedTag: null,
   sidePanelExpandedTaskId: null,
   sidePanelSelectedTaskIds: [],
+  sidePanelSelectionAnchorId: null,
   quickAddOpen: false,
   quickAddPrefill: null,
 
@@ -135,11 +141,33 @@ export const createPanelSlice: SliceCreator<PanelSlice> = (set, get) => ({
     if (multiSelect) {
       const isSelected = currentIds.includes(id);
       const newIds = isSelected ? currentIds.filter((tid) => tid !== id) : [...currentIds, id];
-      set({ sidePanelSelectedTaskIds: newIds, selectedTaskIds: [], activePanel: 'side' });
+      set({ sidePanelSelectedTaskIds: newIds, selectedTaskIds: [], activePanel: 'side', sidePanelSelectionAnchorId: id });
     } else {
       const isSelected = currentIds.length === 1 && currentIds[0] === id;
-      set({ sidePanelSelectedTaskIds: isSelected ? [] : [id], selectedTaskIds: [], activePanel: 'side' });
+      set({ sidePanelSelectedTaskIds: isSelected ? [] : [id], selectedTaskIds: [], activePanel: 'side', sidePanelSelectionAnchorId: isSelected ? null : id });
     }
+  },
+
+  getSidePanelOrderedVisibleTaskIds: () => {
+    const s = get();
+    const isGrouped = !s.sidePanelSelectedProject && !s.sidePanelSelectedPerson && !s.sidePanelSelectedTag
+      && s.sidePanelView !== 'logbook' && s.sidePanelView !== 'upcoming';
+    return flattenToVisibleOrder(s.getSidePanelFilteredTasks(), {
+      isGrouped,
+      isTodayView: s.sidePanelView === 'today',
+    }).map((t) => t.id);
+  },
+
+  sidePanelSelectTaskRange: (toId) => {
+    const s = get();
+    const anchorId = (s.sidePanelSelectionAnchorId as string | null) ?? toId;
+    const ids = rangeBetween(s.getSidePanelOrderedVisibleTaskIds(), anchorId, toId);
+    set({ sidePanelSelectedTaskIds: ids, sidePanelSelectionAnchorId: anchorId, selectedTaskIds: [], activePanel: 'side' });
+  },
+
+  sidePanelSelectAllVisible: () => {
+    const ids = get().getSidePanelOrderedVisibleTaskIds();
+    set({ sidePanelSelectedTaskIds: ids, sidePanelSelectionAnchorId: ids[0] ?? null, selectedTaskIds: [], activePanel: 'side' });
   },
 
   getSidePanelFilteredTasks: () => {
