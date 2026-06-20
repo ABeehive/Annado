@@ -4,7 +4,10 @@ import { RenderTitleWithLinks } from './RenderTitleWithLinks';
 import { useTaskStore } from '../stores/taskStore';
 
 vi.mock('@tauri-apps/plugin-opener', () => ({
-  openUrl: vi.fn(),
+  // Real openUrl returns Promise<void>; the source calls .catch() on it, so the
+  // mock must resolve a promise (a bare vi.fn() returns undefined → unhandled
+  // ".catch of undefined" rejection that fails the run).
+  openUrl: vi.fn().mockResolvedValue(undefined),
 }));
 import { openUrl } from '@tauri-apps/plugin-opener';
 

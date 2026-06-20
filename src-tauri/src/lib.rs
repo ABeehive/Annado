@@ -2,6 +2,7 @@ mod calendar;
 mod commands;
 mod notification_scheduler;
 mod parser;
+mod path_openers;
 mod recurrence;
 mod taskformat;
 mod vault;
@@ -19,10 +20,11 @@ use commands::{
     get_calendars, get_calendar_events, check_calendar_access, open_calendar_at_date,
     delete_calendar_event,
     get_is_obsidian_vault, set_is_obsidian_vault,
-    get_editor_config, set_editor_config, open_file_in_editor,
+    get_opener_prefs, set_opener_prefs, run_custom_opener,
     show_main_window, open_task_in_main, get_notification_prefs, save_notification_prefs,
     set_tray_enabled, send_test_notification,
 };
+use path_openers::{detect_path_openers, refresh_path_openers, open_path_with, open_path_default};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
@@ -373,15 +375,19 @@ pub fn run() {
             delete_calendar_event,
             get_is_obsidian_vault,
             set_is_obsidian_vault,
-            get_editor_config,
-            set_editor_config,
-            open_file_in_editor,
+            get_opener_prefs,
+            set_opener_prefs,
+            run_custom_opener,
             show_main_window,
             open_task_in_main,
             get_notification_prefs,
             save_notification_prefs,
             set_tray_enabled,
             send_test_notification,
+            detect_path_openers,
+            refresh_path_openers,
+            open_path_with,
+            open_path_default,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
