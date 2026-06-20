@@ -17,6 +17,7 @@ import { getViewIcon, PersonIcon } from '../utils/viewIcons';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { isDateTodayOrEarlier, isDateUpcoming } from '../utils/dates';
 import { AgendaDaySelector } from '../features/agenda/AgendaDaySelector';
+import { OpenFileButton } from './OpenFileButton';
 
 const chevronIcon = (expanded: boolean) => (
   <svg
@@ -493,7 +494,7 @@ export function Sidebar() {
 
     return (
       <li key={project.path} className="relative">
-        <div className="flex items-center">
+        <div className="flex items-center group">
           {hasChildren ? (
             <button
               onClick={() => toggleFolder(project.name)}
@@ -550,6 +551,7 @@ export function Sidebar() {
               </span>
             )}
           </button>
+          <OpenFileButton path={project.path} />
         </div>
         {colorPickerProject === project.name && (
           <ColorPicker
@@ -633,11 +635,11 @@ export function Sidebar() {
                   const count = getPersonCount(person.name);
                   const isActive = selectedPerson === person.name;
                   return (
-                    <li key={person.path}>
+                    <li key={person.path} className="group flex items-center">
                       <button
                         onClick={() => { if (renamingPerson !== person.name) handlePersonClick(person.name); }}
                         onContextMenu={(e) => { e.preventDefault(); setPersonContextMenu({ x: e.clientX, y: e.clientY, person }); }}
-                        className={`${rowClass(isActive)} justify-between`}
+                        className={`${rowClass(isActive)} justify-between flex-1`}
                       >
                         <span className="flex items-center gap-3 min-w-0 flex-1">
                           {personIcon(isActive)}
@@ -663,6 +665,7 @@ export function Sidebar() {
                           </span>
                         )}
                       </button>
+                      <OpenFileButton path={person.path} />
                     </li>
                   );
                 })}

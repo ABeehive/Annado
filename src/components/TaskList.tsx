@@ -13,7 +13,7 @@ import { TaskItem } from './TaskItem';
 import { BulkActions } from './BulkActions';
 import { ViewType, Task, ProjectMetadata, PersonMetadata, CalendarEvent, Milestone } from '../types/task';
 import { getProjectColor, getTagColor } from '../utils/projectColors';
-import { openInEditor, editorLabel } from '../utils/openInEditor';
+import { OpenFileButton } from './OpenFileButton';
 import { viewIcons, PersonIcon, TagIcon } from '../utils/viewIcons';
 import { splitTagPath } from '../utils/tags';
 import { formatDateForDisplay, getDateGroup, formatDeadlineShort, getDeadlineUrgency, DEADLINE_URGENCY_COLORS, formatDeadlineCountdown, parseLocalDate, getToday, getDaySections, DaySection, formatDateForStorage } from '../utils/dates';
@@ -36,15 +36,16 @@ const viewConfig: Record<ViewType, { title: string; color: string }> = {
 };
 
 // Project header component
-function ProjectHeader({ name, color = '#5C6BC0' }: { name: string; color?: string }) {
+function ProjectHeader({ name, color = '#5C6BC0', path }: { name: string; color?: string; path?: string }) {
   return (
-    <div className="flex items-center gap-3 pl-[52px] pr-8 pt-8 pb-3">
+    <div className="group flex items-center gap-3 pl-[52px] pr-8 pt-8 pb-3">
       <svg className="w-4 h-4" style={{ color }} viewBox="0 0 24 24" fill="currentColor">
         <circle cx="12" cy="12" r="6" />
       </svg>
       <span className="text-[14px] font-semibold text-[#1A1A1A] dark:text-[#E0E0E0]">
         {name}
       </span>
+      {path && <OpenFileButton path={path} />}
       <div className="flex-1 h-px bg-[#E8E8E8] dark:bg-[#3A3A3A] ml-2" />
     </div>
   );
@@ -217,7 +218,7 @@ function DraggableTaskItem({ task, showProject }: { task: Task; showProject: boo
 // rows live in a single array so the whole grouped/flat list can be windowed.
 type TaskRow =
   | { kind: 'task'; key: string; task: Task; showProject: boolean }
-  | { kind: 'projectHeader'; key: string; name: string; color?: string }
+  | { kind: 'projectHeader'; key: string; name: string; color?: string; path?: string }
   | { kind: 'eveningHeader'; key: string };
 
 /**
@@ -298,7 +299,7 @@ function VirtualTaskList({
               {row.kind === 'task' ? (
                 <DraggableTaskItem task={row.task} showProject={row.showProject} />
               ) : row.kind === 'projectHeader' ? (
-                <ProjectHeader name={row.name} color={row.color} />
+                <ProjectHeader name={row.name} color={row.color} path={row.path} />
               ) : (
                 <EveningHeader />
               )}
@@ -496,6 +497,7 @@ function RecurringTaskItem({
             Next: {formatDate(nextDate)}
           </span>
         )}
+        <OpenFileButton path={task.filePath} />
       </div>
     </div>
   );
@@ -859,7 +861,7 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
     setSelectedProject,
     setSelectedTag,
   } = usePanelState();
-  const { selectedPersonMetadata, isLoading, vaultPath, availableProjects, availablePeople, projectColors, tagColors, updateProjectMetadata, sidePanelOpen, toggleSidePanel, calendarEnabled, calendarEvents, smartLists, selectedSmartListId, isObsidianVault, editorType, editorCustomCommand } = useTaskStore(useShallow((s) => ({ selectedPersonMetadata: s.selectedPersonMetadata, isLoading: s.isLoading, vaultPath: s.vaultPath, availableProjects: s.availableProjects, availablePeople: s.availablePeople, projectColors: s.projectColors, tagColors: s.tagColors, updateProjectMetadata: s.updateProjectMetadata, sidePanelOpen: s.sidePanelOpen, toggleSidePanel: s.toggleSidePanel, calendarEnabled: s.calendarEnabled, calendarEvents: s.calendarEvents, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId, isObsidianVault: s.isObsidianVault, editorType: s.editorType, editorCustomCommand: s.editorCustomCommand, })));
+  const { selectedPersonMetadata, isLoading, vaultPath, availableProjects, availablePeople, projectColors, tagColors, updateProjectMetadata, sidePanelOpen, toggleSidePanel, calendarEnabled, calendarEvents, smartLists, selectedSmartListId } = useTaskStore(useShallow((s) => ({ selectedPersonMetadata: s.selectedPersonMetadata, isLoading: s.isLoading, vaultPath: s.vaultPath, availableProjects: s.availableProjects, availablePeople: s.availablePeople, projectColors: s.projectColors, tagColors: s.tagColors, updateProjectMetadata: s.updateProjectMetadata, sidePanelOpen: s.sidePanelOpen, toggleSidePanel: s.toggleSidePanel, calendarEnabled: s.calendarEnabled, calendarEvents: s.calendarEvents, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId })));
   // getFilteredTasks() reads tasks and completion-linger from the store via
   // getState(), which is not a subscription. usePanelState no longer re-renders
   // this component on selection/expansion (those are per-row now), so subscribe
@@ -1061,7 +1063,7 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
     for (const { project, tasks: projectTasks } of groupedTasks.projects) {
       const projectInfo = availableProjects.find((p) => p.name === project);
       const color = getProjectColor(project, projectInfo?.parentFolder, projectColors);
-      out.push({ kind: 'projectHeader', key: `header:${project}`, name: project, color });
+      out.push({ kind: 'projectHeader', key: `header:${project}`, name: project, color, path: projectInfo?.path });
       for (const task of projectTasks) out.push({ kind: 'task', key: task.id, task, showProject: false });
     }
     if (eveningGrouped) {
@@ -1072,7 +1074,7 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
       for (const { project, tasks: projectTasks } of eveningGrouped.projects) {
         const projectInfo = availableProjects.find((p) => p.name === project);
         const color = getProjectColor(project, projectInfo?.parentFolder, projectColors);
-        out.push({ kind: 'projectHeader', key: `evening-header:${project}`, name: project, color });
+        out.push({ kind: 'projectHeader', key: `evening-header:${project}`, name: project, color, path: projectInfo?.path });
         for (const task of projectTasks) out.push({ kind: 'task', key: task.id, task, showProject: false });
       }
     }
@@ -1226,18 +1228,13 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
             const personInfo = selectedPerson ? availablePeople.find(p => p.name === selectedPerson) : null;
             const targetPath = selectedProjectInfo?.path ?? personInfo?.path ?? null;
 
-            return targetPath && vaultPath ? (
-              <button
-                onClick={() => openInEditor(vaultPath, targetPath, 1, isObsidianVault, editorType, editorCustomCommand)}
-                className="text-[26px] font-medium text-[#1A1A1A] dark:text-[#E8E8E8] hover:underline text-left"
-                title={editorLabel(isObsidianVault, editorType)}
-              >
-                {title}
-              </button>
-            ) : (
-              <h2 className="text-[26px] font-medium text-[#1A1A1A] dark:text-[#E8E8E8]">
-                {title}
-              </h2>
+            return (
+              <div className="flex items-center gap-2">
+                <h2 className="text-[26px] font-medium text-[#1A1A1A] dark:text-[#E8E8E8]">
+                  {title}
+                </h2>
+                {targetPath && <OpenFileButton path={targetPath} showLabel size="md" />}
+              </div>
             );
           })()}
           {/* Side panel toggle button - only in main panel */}
