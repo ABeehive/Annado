@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { modalShadow } from '../utils/styles';
 
 interface ConfirmModalProps {
@@ -22,7 +23,10 @@ export function ConfirmModal({ open, message, confirmLabel = 'Delete', onConfirm
 
   if (!open) return null;
 
-  return (
+  // Portal to <body> so the overlay's `fixed` positioning is relative to the
+  // viewport. Rendered in place, a transformed ancestor (e.g. the Bulk Actions
+  // bar's -translate-x-1/2) becomes its containing block and pushes it off-screen.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[25vh]">
       <div className="absolute inset-0 bg-black/20 dark:bg-black/40" onClick={onCancel} />
       <div className={`relative w-full max-w-sm mx-4 bg-white dark:bg-[#2A2A2A] rounded-xl ${modalShadow}`}>
@@ -46,6 +50,7 @@ export function ConfirmModal({ open, message, confirmLabel = 'Delete', onConfirm
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
