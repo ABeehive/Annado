@@ -10,6 +10,7 @@ import {
   MigrationReport, TagInfo,
 } from '../../types/task';
 import { formatDateForStorage, getToday } from '../../utils/dates';
+import { sortTasksByDocumentOrder } from '../../utils/taskOrder';
 
 export interface UndoEntry {
   /** Reverts the recorded action (a normal backend write, so it persists) */
@@ -522,11 +523,11 @@ export const createTaskSlice: SliceCreator<TaskSlice> = (set, get) => {
     if (currentView === 'smart-list') {
       const list = smartLists.find((l) => l.id === selectedSmartListId);
       if (!list) return [];
-      return withCompletionLinger(tasks, completingTaskIds, (ts) =>
-        filterTasksForSmartList(ts, list.filter, formatDateForStorage(getToday())));
+      return sortTasksByDocumentOrder(withCompletionLinger(tasks, completingTaskIds, (ts) =>
+        filterTasksForSmartList(ts, list.filter, formatDateForStorage(getToday()))));
     }
-    return withCompletionLinger(tasks, completingTaskIds, (ts) =>
-      filterTasks(ts, currentView, selectedProject, selectedPerson, selectedTag));
+    return sortTasksByDocumentOrder(withCompletionLinger(tasks, completingTaskIds, (ts) =>
+      filterTasks(ts, currentView, selectedProject, selectedPerson, selectedTag)));
   },
 
   getSelectedTask: () => {

@@ -122,6 +122,18 @@ fn is_hidden_path(path: &Path) -> bool {
     path.components().any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
 }
 
+/// Canonical task order: document order (file path, then line number).
+/// Stable across edits/deletes so task lists don't reshuffle in the UI.
+/// This is the same key `Task::generate_id` hashes, and `(file_path, line_number)`
+/// is unique per task, so the stable sort needs no further tie-break.
+fn sort_tasks(tasks: &mut [Task]) {
+    tasks.sort_by(|a, b| {
+        a.file_path
+            .cmp(&b.file_path)
+            .then(a.line_number.cmp(&b.line_number))
+    });
+}
+
 /// For tasks with no project derived from a Projects folder, try to derive from an Areas folder.
 fn apply_areas_project(tasks: &mut [Task], areas_pattern: &str) {
     if areas_pattern.is_empty() { return; }
@@ -525,6 +537,9 @@ impl Vault {
         // Normalize symbolic dates (@when(today), @when(tomorrow)) by persisting actual dates
         self.normalize_symbolic_dates(&all_tasks, today);
 
+        // Return in canonical document order so the initial load matches every
+        // later refresh (get_tasks / the watcher emit), which also sort.
+        sort_tasks(&mut all_tasks);
         all_tasks
     }
 
@@ -547,7 +562,11 @@ impl Vault {
     }
 
     pub fn get_tasks(&self) -> Vec<Task> {
-        self.tasks.read().values().cloned().collect()
+        // HashMap iteration order is unspecified; return canonical document order
+        // so the UI list is stable across refreshes.
+        let mut tasks: Vec<Task> = self.tasks.read().values().cloned().collect();
+        sort_tasks(&mut tasks);
+        tasks
     }
 
     pub fn get_task(&self, id: &str) -> Option<Task> {
@@ -1209,7 +1228,11 @@ impl Vault {
                     }
                 }
 
-                callback(tasks_ref.read().values().cloned().collect());
+                // Emit in canonical document order (HashMap order is unspecified)
+                // so file changes don't reshuffle the UI list.
+                let mut snapshot: Vec<Task> = tasks_ref.read().values().cloned().collect();
+                sort_tasks(&mut snapshot);
+                callback(snapshot);
             }
         });
 
@@ -2789,5 +2812,86 @@ mod tests {
         let line =
             parser::format_task_line(&task, next, None, &std::collections::HashSet::new(), crate::taskformat::TaskFormat::Annado);
         assert!(line.contains("@repeat(every 2 weeks)"), "line: {line}");
+    }
+
+    /// Minimal Task carrying only the fields `sort_tasks` keys on.
+    fn task_at(file_path: &str, line_number: usize) -> Task {
+        Task {
+            id: Task::generate_id(file_path, line_number),
+            title: String::new(),
+            notes: String::new(),
+            when: WhenValue::Inbox,
+            deadline: None,
+            tags: Vec::new(),
+            checklist: Vec::new(),
+            completed: false,
+            completed_date: None,
+            created_date: None,
+            file_path: file_path.to_string(),
+            line_number,
+            projects: Vec::new(),
+            indent_level: 0,
+            priority: None,
+            persons: Vec::new(),
+            recurrence: None,
+            duration_minutes: None,
+            scheduled_time: None,
+        }
+    }
+
+    fn order(tasks: &[Task]) -> Vec<(String, usize)> {
+        tasks
+            .iter()
+            .map(|t| (t.file_path.clone(), t.line_number))
+            .collect()
+    }
+
+    #[test]
+    fn test_sort_tasks_document_order() {
+        // Scrambled input across files and lines.
+        let mut tasks = vec![
+            task_at("Work/notes.md", 5),
+            task_at("Daily/2026-06-25.md", 7),
+            task_at("Projects/Roof.md", 14),
+            task_at("Daily/2026-06-25.md", 3),
+            task_at("Projects/Roof.md", 12),
+        ];
+        sort_tasks(&mut tasks);
+        assert_eq!(
+            order(&tasks),
+            vec![
+                ("Daily/2026-06-25.md".to_string(), 3),
+                ("Daily/2026-06-25.md".to_string(), 7),
+                ("Projects/Roof.md".to_string(), 12),
+                ("Projects/Roof.md".to_string(), 14),
+                ("Work/notes.md".to_string(), 5),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_sort_tasks_stable_across_delete() {
+        // Deleting a middle task must not reorder the survivors.
+        let mut tasks = vec![
+            task_at("a.md", 1),
+            task_at("a.md", 2),
+            task_at("a.md", 3),
+            task_at("b.md", 1),
+        ];
+        sort_tasks(&mut tasks);
+
+        // Remove the second task, then re-sort (mirrors a re-scan after delete).
+        tasks.retain(|t| !(t.file_path == "a.md" && t.line_number == 2));
+        sort_tasks(&mut tasks);
+
+        // Survivors keep their relative order — no reshuffle.
+        assert_eq!(
+            order(&tasks),
+            vec![
+                ("a.md".to_string(), 1),
+                ("a.md".to_string(), 3),
+                ("b.md".to_string(), 1),
+            ]
+        );
     }
 }
