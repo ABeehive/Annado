@@ -2,6 +2,7 @@ import type { SliceCreator } from './types';
 import { persist } from '../storeUtils';
 import type { ViewType, Task } from '../../types/task';
 import { filterTasks, withCompletionLinger } from '../filterTasks';
+import { sortTasksByDocumentOrder } from '../../utils/taskOrder';
 
 export interface QuickAddPrefill {
   title?: string;
@@ -144,14 +145,14 @@ export const createPanelSlice: SliceCreator<PanelSlice> = (set, get) => ({
 
   getSidePanelFilteredTasks: () => {
     const state = get();
-    return withCompletionLinger(state.tasks, state.completingTaskIds, (ts) =>
+    return sortTasksByDocumentOrder(withCompletionLinger(state.tasks, state.completingTaskIds, (ts) =>
       filterTasks(
         ts,
         state.sidePanelView,
         state.sidePanelSelectedProject,
         state.sidePanelSelectedPerson,
         state.sidePanelSelectedTag,
-      ));
+      )));
   },
 
   openQuickAdd: (prefill) => set({ quickAddOpen: true, quickAddPrefill: prefill ?? null }),
