@@ -260,30 +260,30 @@ export const createTaskSlice: SliceCreator<TaskSlice> = (set, get) => {
   },
 
   setCurrentView: (view) => {
-    set({ currentView: view, selectedTaskId: null, selectedProject: null, selectedPerson: null, selectedTag: null, expandedTaskId: null });
+    set({ currentView: view, selectedTaskId: null, selectedTaskIds: [], selectedProject: null, selectedPerson: null, selectedTag: null, expandedTaskId: null });
   },
 
   setSelectedProject: (project) => {
-    set({ selectedProject: project, selectedPerson: null, selectedTag: null, expandedTaskId: null, selectedTaskId: null });
+    set({ selectedProject: project, selectedPerson: null, selectedTag: null, expandedTaskId: null, selectedTaskId: null, selectedTaskIds: [] });
   },
 
   setSelectedPerson: (person) => {
-    set({ selectedPerson: person, selectedProject: null, selectedTag: null, expandedTaskId: null, selectedTaskId: null, selectedPersonMetadata: null });
+    set({ selectedPerson: person, selectedProject: null, selectedTag: null, expandedTaskId: null, selectedTaskId: null, selectedTaskIds: [], selectedPersonMetadata: null });
     if (person) get().fetchPersonMetadata(person);
   },
 
   setSelectedTag: (tag) => {
-    set({ selectedTag: tag, selectedProject: null, selectedPerson: null, expandedTaskId: null, selectedTaskId: null, selectedPersonMetadata: null });
+    set({ selectedTag: tag, selectedProject: null, selectedPerson: null, expandedTaskId: null, selectedTaskId: null, selectedTaskIds: [], selectedPersonMetadata: null });
   },
 
   navigateToProject: (project) => {
-    set({ currentView: 'inbox' as ViewType, selectedTaskId: null, expandedTaskId: null });
-    set({ selectedProject: project, selectedPerson: null, selectedTag: null, expandedTaskId: null, selectedTaskId: null });
+    set({ currentView: 'inbox' as ViewType, selectedTaskId: null, expandedTaskId: null, selectedTaskIds: [] });
+    set({ selectedProject: project, selectedPerson: null, selectedTag: null, expandedTaskId: null, selectedTaskId: null, selectedTaskIds: [] });
   },
 
   navigateToPerson: (person) => {
-    set({ currentView: 'inbox' as ViewType, selectedTaskId: null, expandedTaskId: null });
-    set({ selectedPerson: person, selectedProject: null, selectedTag: null, expandedTaskId: null, selectedTaskId: null, selectedPersonMetadata: null });
+    set({ currentView: 'inbox' as ViewType, selectedTaskId: null, expandedTaskId: null, selectedTaskIds: [] });
+    set({ selectedPerson: person, selectedProject: null, selectedTag: null, expandedTaskId: null, selectedTaskId: null, selectedTaskIds: [], selectedPersonMetadata: null });
     if (person) get().fetchPersonMetadata(person);
   },
 

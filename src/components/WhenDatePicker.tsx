@@ -12,14 +12,25 @@ import {
 import { type DateSuggestion } from '../utils/dateParser';
 import { DatePickerPopover, QuickSelectChip } from './DatePickerPopover';
 
+// Fixed viewport-centered position for pickers opened from the bulk-actions
+// bar, which floats at the bottom edge where an anchored popover gets clipped.
+export const CENTER_POSITION: React.CSSProperties = {
+  position: 'fixed',
+  left: '50%',
+  top: '40%',
+  transform: 'translate(-50%, -50%)',
+  zIndex: 9999,
+};
+
 interface WhenDatePickerProps {
   value: WhenValue;
   onChange: (when: WhenValue) => void;
   onClose: () => void;
   positionStyle?: React.CSSProperties;
+  includeInbox?: boolean;
 }
 
-export function WhenDatePicker({ value, onChange, onClose, positionStyle }: WhenDatePickerProps) {
+export function WhenDatePicker({ value, onChange, onClose, positionStyle, includeInbox = false }: WhenDatePickerProps) {
   // Get the currently selected date (if any)
   const selectedDate = typeof value === 'object' && 'date' in value
     ? new Date(value.date)
@@ -50,6 +61,9 @@ export function WhenDatePicker({ value, onChange, onClose, positionStyle }: When
     >
       {/* Quick-select chips */}
       <div className="flex flex-wrap gap-2 px-3 py-2.5">
+        {includeInbox && (
+          <QuickSelectChip icon="📥" label="Inbox" onClick={() => handleQuickSelect('inbox')} />
+        )}
         <QuickSelectChip icon="☀️" label="Today" onClick={() => handleQuickSelect('today')} />
         <QuickSelectChip icon="→" label="Tomorrow" onClick={() => handleQuickSelect('tomorrow')} />
         <QuickSelectChip icon="🌿" label="This Weekend" onClick={() => handleDateSelect(getThisWeekend())} />
@@ -92,12 +106,21 @@ interface WhenButtonProps {
   onChange: (when: WhenValue) => void;
   forceOpen?: boolean;
   onClose?: () => void;
+  placement?: 'anchor' | 'center';
+  includeInbox?: boolean;
+  variant?: 'default' | 'toolbar';
 }
 
-export function WhenButton({ value, onChange, forceOpen, onClose }: WhenButtonProps) {
+export function WhenButton({ value, onChange, forceOpen, onClose, placement = 'anchor', includeInbox = false, variant = 'default' }: WhenButtonProps) {
   const [isOpen, setIsOpen] = usePickerOpen(forceOpen);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const pickerPos = usePickerPosition(buttonRef, isOpen);
+  const anchorPos = usePickerPosition(buttonRef, isOpen && placement === 'anchor');
+  const pickerPos = placement === 'center' ? (isOpen ? CENTER_POSITION : null) : anchorPos;
+
+  const buttonChrome = variant === 'toolbar'
+    // Dark chrome for the black bulk-actions bar (mirrors its old <select>).
+    ? 'bg-[#333] dark:bg-[#3A3A3A] text-white border-none hover:bg-[#444] dark:hover:bg-[#444]'
+    : 'border border-[#E8E8E8] dark:border-[#3A3A3A] bg-white dark:bg-[#333] text-[#1A1A1A] dark:text-[#E0E0E0] hover:bg-[#F5F5F5] dark:hover:bg-[#3A3A3A]';
 
   const getDisplayText = (): string => {
     if (typeof value === 'string') {
@@ -160,6 +183,7 @@ export function WhenButton({ value, onChange, forceOpen, onClose }: WhenButtonPr
         onClose?.();
       }}
       positionStyle={pickerPos}
+      includeInbox={includeInbox}
     />
   );
 
@@ -172,7 +196,7 @@ export function WhenButton({ value, onChange, forceOpen, onClose }: WhenButtonPr
           if (isOpen) { setIsOpen(false); onClose?.(); }
           else { setIsOpen(true); }
         }}
-        className="flex items-center gap-1.5 px-2 py-1 text-[12px] rounded border border-[#E8E8E8] dark:border-[#3A3A3A] bg-white dark:bg-[#333] text-[#1A1A1A] dark:text-[#E0E0E0] hover:bg-[#F5F5F5] dark:hover:bg-[#3A3A3A] transition-colors cursor-pointer"
+        className={`flex items-center gap-1.5 px-2 py-1 text-[12px] rounded-md transition-colors cursor-pointer ${buttonChrome}`}
       >
         {getIcon()}
         <span>{getDisplayText()}</span>

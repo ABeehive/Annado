@@ -94,6 +94,7 @@ export const createPanelSlice: SliceCreator<PanelSlice> = (set, get) => ({
       sidePanelSelectedPerson: null,
       sidePanelSelectedTag: null,
       sidePanelExpandedTaskId: null,
+      sidePanelSelectedTaskIds: [],
     });
     localStorage.setItem('sidePanelView', view);
   },
@@ -104,6 +105,7 @@ export const createPanelSlice: SliceCreator<PanelSlice> = (set, get) => ({
       sidePanelSelectedPerson: null,
       sidePanelSelectedTag: null,
       sidePanelExpandedTaskId: null,
+      sidePanelSelectedTaskIds: [],
     });
   },
 
@@ -113,6 +115,7 @@ export const createPanelSlice: SliceCreator<PanelSlice> = (set, get) => ({
       sidePanelSelectedProject: null,
       sidePanelSelectedTag: null,
       sidePanelExpandedTaskId: null,
+      sidePanelSelectedTaskIds: [],
     });
     if (person) get().fetchPersonMetadata(person);
   },
@@ -123,6 +126,7 @@ export const createPanelSlice: SliceCreator<PanelSlice> = (set, get) => ({
       sidePanelSelectedProject: null,
       sidePanelSelectedPerson: null,
       sidePanelExpandedTaskId: null,
+      sidePanelSelectedTaskIds: [],
     });
   },
 
