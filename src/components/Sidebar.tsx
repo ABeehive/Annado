@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { SortableList, SortableItem } from './Sortable';
+import { SortableList, SortableItem, type DragHandleProps } from './Sortable';
 import { useTaskStore } from '../stores/taskStore';
 import { ViewType, getWhenType, ProjectInfo, PersonInfo, SmartList } from '../types/task';
 import { ContextMenu } from './ContextMenu';
@@ -314,6 +314,20 @@ export function Sidebar() {
     return sortProjects(topLevel).map(buildTree);
   }, [availableProjects, projectOrder]);
 
+  // Flat, displayed order of every project name (parents + children, render order).
+  // Passed to reorderProjects so a first drag starts from what's on screen.
+  const displayedProjectNames = useMemo(() => {
+    const names: string[] = [];
+    const walk = (nodes: ProjectHierarchy[]) => {
+      for (const n of nodes) {
+        names.push(n.project.name);
+        walk(n.children);
+      }
+    };
+    walk(projectHierarchy);
+    return names;
+  }, [projectHierarchy]);
+
   const getCount = (view: ViewType): number => {
     if (view === 'recurring') {
       return tasks.filter((t) => t.recurrence && !t.completed).length;
@@ -480,7 +494,11 @@ export function Sidebar() {
   };
 
   // Recursive function to render project tree at any depth
-  const renderProjectTree = (node: ProjectHierarchy, depth: number = 0): React.ReactElement => {
+  const renderProjectTree = (
+    node: ProjectHierarchy,
+    depth: number = 0,
+    handleProps: DragHandleProps = {},
+  ): React.ReactElement => {
     const { project, children } = node;
     const hasChildren = children.length > 0;
     const isExpanded = expandedFolders.has(project.name);
@@ -494,7 +512,7 @@ export function Sidebar() {
 
     return (
       <li key={project.path} className="relative">
-        <div className="flex items-center group">
+        <div className="flex items-center group" {...handleProps}>
           {hasChildren ? (
             <button
               onClick={() => toggleFolder(project.name)}
@@ -561,9 +579,18 @@ export function Sidebar() {
           />
         )}
         {hasChildren && isExpanded && (
-          <ul className="space-y-0.5 mt-0.5">
-            {children.map((child) => renderProjectTree(child, depth + 1))}
-          </ul>
+          <SortableList
+            ids={children.map((c) => c.project.name)}
+            onReorder={(from, to) => reorderProjects(from, to, displayedProjectNames)}
+          >
+            <ul className="space-y-0.5 mt-0.5">
+              {children.map((child) => (
+                <SortableItem key={child.project.path} id={child.project.name}>
+                  {({ handleProps: childHandle }) => renderProjectTree(child, depth + 1, childHandle)}
+                </SortableItem>
+              ))}
+            </ul>
+          </SortableList>
         )}
       </li>
     );
@@ -756,14 +783,12 @@ export function Sidebar() {
         {projectHierarchy.length > 0 && (
           <SortableList
             ids={projectHierarchy.map(h => h.project.name)}
-            onReorder={(from, to) => reorderProjects(from, to)}
+            onReorder={(from, to) => reorderProjects(from, to, displayedProjectNames)}
           >
             <ul className="space-y-0.5">
               {projectHierarchy.map((item) => (
                 <SortableItem key={item.project.path} id={item.project.name}>
-                  {({ handleProps }) => (
-                    <div {...handleProps}>{renderProjectTree(item)}</div>
-                  )}
+                  {({ handleProps }) => renderProjectTree(item, 0, handleProps)}
                 </SortableItem>
               ))}
             </ul>

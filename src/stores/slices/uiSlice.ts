@@ -52,7 +52,7 @@ export interface UISlice {
   toggleFolder: (folder: string) => void;
   setProjectColor: (project: string, color: string) => void;
   setTagColor: (tag: string, color: string) => void;
-  reorderProjects: (activeId: string, overId: string) => void;
+  reorderProjects: (activeId: string, overId: string, displayedOrder: string[]) => void;
   setSidebarCount: (area: string, visible: boolean) => void;
   setShowProjectCounts: (visible: boolean) => void;
   addRecentItem: (type: RecentItem['type'], id: string) => void;
@@ -101,13 +101,15 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
     persist('tagColors', tagColors);
   },
 
-  reorderProjects: (activeId, overId) => {
+  reorderProjects: (activeId, overId, displayedOrder) => {
     const { projectOrder } = get();
-    // If projectOrder is empty, initialize from availableProjects
-    const availableProjects = get().availableProjects ?? [];
+    // Seed from what is actually on screen (alphabetical fallback included),
+    // and append any projects the saved order doesn't know yet — otherwise
+    // the first drag "jumps" to an order the user never saw.
+    const known = new Set(projectOrder as string[]);
     const order = (projectOrder as string[]).length > 0
-      ? [...(projectOrder as string[])]
-      : availableProjects.map((p: { name: string }) => p.name);
+      ? [...(projectOrder as string[]), ...displayedOrder.filter((n) => !known.has(n))]
+      : [...displayedOrder];
     const oldIndex = order.indexOf(activeId);
     const newIndex = order.indexOf(overId);
     if (oldIndex === -1 || newIndex === -1) return;
