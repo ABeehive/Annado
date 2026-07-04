@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { usePickerOpen } from '../hooks/usePickerOpen';
 import { usePickerPosition } from '../hooks/usePickerPosition';
 import { WhenValue } from '../types/task';
+import { CENTER_POSITION } from './WhenDatePicker';
 import {
   getNextMonday,
   getThisWeekend,
@@ -100,6 +101,8 @@ interface DeadlineButtonProps {
   onChange: (deadline: string | null) => void;
   forceOpen?: boolean;
   onClose?: () => void;
+  placement?: 'anchor' | 'center';
+  variant?: 'default' | 'toolbar';
 }
 
 /** Get urgency color for deadline display */
@@ -108,13 +111,19 @@ function getDeadlineColor(value: string | null): string {
   return DEADLINE_URGENCY_COLORS[getDeadlineUrgency(value)];
 }
 
-export function DeadlineButton({ value, onChange, forceOpen, onClose }: DeadlineButtonProps) {
+export function DeadlineButton({ value, onChange, forceOpen, onClose, placement = 'anchor', variant = 'default' }: DeadlineButtonProps) {
   const [isOpen, setIsOpen] = usePickerOpen(forceOpen);
   const buttonRef = useRef<HTMLButtonElement>(null);
-  const pickerPos = usePickerPosition(buttonRef, isOpen);
+  const anchorPos = usePickerPosition(buttonRef, isOpen && placement === 'anchor');
+  const pickerPos = placement === 'center' ? (isOpen ? CENTER_POSITION : null) : anchorPos;
 
   const color = getDeadlineColor(value);
   const displayText = value ? formatDeadlineCountdown(value) : 'Deadline';
+
+  const buttonChrome = variant === 'toolbar'
+    // Dark chrome for the black bulk-actions bar (mirrors its old <select>).
+    ? 'bg-[#333] dark:bg-[#3A3A3A] text-white border-none hover:bg-[#444] dark:hover:bg-[#444]'
+    : 'border border-[#E8E8E8] dark:border-[#3A3A3A] bg-white dark:bg-[#333] text-[#1A1A1A] dark:text-[#E0E0E0] hover:bg-[#F5F5F5] dark:hover:bg-[#3A3A3A]';
 
   const picker = isOpen && pickerPos && (
     <DeadlinePicker
@@ -137,7 +146,7 @@ export function DeadlineButton({ value, onChange, forceOpen, onClose }: Deadline
           if (isOpen) { setIsOpen(false); onClose?.(); }
           else { setIsOpen(true); }
         }}
-        className="flex items-center gap-1.5 px-2 py-1 text-[12px] rounded border border-[#E8E8E8] dark:border-[#3A3A3A] bg-white dark:bg-[#333] text-[#1A1A1A] dark:text-[#E0E0E0] hover:bg-[#F5F5F5] dark:hover:bg-[#3A3A3A] transition-colors cursor-pointer"
+        className={`flex items-center gap-1.5 px-2 py-1 text-[12px] rounded-md transition-colors cursor-pointer ${buttonChrome}`}
       >
         <svg className="w-4 h-4" style={{ color }} viewBox="0 0 24 24" fill="currentColor">
           <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />

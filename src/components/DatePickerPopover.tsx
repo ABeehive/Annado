@@ -152,6 +152,7 @@ export function DatePickerPopover({
     <div
       ref={popoverRef}
       data-picker-portal="true"
+      data-picker-popover
       className="z-[9999] bg-white dark:bg-[#2A2A2A] border border-[#E8E8E8] dark:border-[#3A3A3A] rounded-xl shadow-lg overflow-hidden"
       style={{ minWidth: '320px', position: positionStyle ? undefined : 'absolute', marginTop: positionStyle ? undefined : '4px', ...positionStyle }}
     >
