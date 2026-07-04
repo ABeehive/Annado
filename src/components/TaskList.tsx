@@ -1099,6 +1099,11 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
 
   const metadata = selectedProjectInfo?.metadata;
 
+  // The selected person's backing file, for the open-in button in the info pane.
+  const personPath = selectedPerson
+    ? availablePeople.find((p) => p.name === selectedPerson)?.path ?? null
+    : null;
+
   // Update local description when project changes
   useEffect(() => {
     setLocalDescription(metadata?.description || '');
@@ -1224,19 +1229,11 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
                 {`#${tagParts.leaf}`}
               </h2>
             </div>
-          ) : (() => {
-            const personInfo = selectedPerson ? availablePeople.find(p => p.name === selectedPerson) : null;
-            const targetPath = selectedProjectInfo?.path ?? personInfo?.path ?? null;
-
-            return (
-              <div className="flex items-center gap-2">
-                <h2 className="text-[26px] font-medium text-[#1A1A1A] dark:text-[#E8E8E8]">
-                  {title}
-                </h2>
-                {targetPath && <OpenFileButton path={targetPath} showLabel size="md" />}
-              </div>
-            );
-          })()}
+          ) : (
+            <h2 className="text-[26px] font-medium text-[#1A1A1A] dark:text-[#E8E8E8]">
+              {title}
+            </h2>
+          )}
           {/* Side panel toggle button - only in main panel */}
           {panelId === 'main' && (
             <button
@@ -1295,6 +1292,9 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
                   )}
                 </button>
               )}
+              {selectedProjectInfo?.path && (
+                <OpenFileButton path={selectedProjectInfo.path} showLabel className="ml-auto flex-shrink-0" />
+              )}
             </div>
 
             {/* Metadata fields row */}
@@ -1342,7 +1342,7 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
         )}
 
         {/* Person info pane - horizontal layout with colored icons */}
-        {selectedPerson && hasPersonMetadataContent(selectedPersonMetadata) && (
+        {selectedPerson && (hasPersonMetadataContent(selectedPersonMetadata) || personPath) && (
           <div className="mt-4 mx-0 p-4 bg-[#F8F8F8] dark:bg-[#232323] rounded-xl">
             <div className="flex flex-wrap items-center gap-4 text-[13px] text-[#555] dark:text-[#AAA]">
               {/* Organisation - blue icon */}
@@ -1394,6 +1394,7 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
                   <span>{selectedPersonMetadata.projects.join(', ')}</span>
                 </div>
               )}
+              {personPath && <OpenFileButton path={personPath} showLabel className="ml-auto flex-shrink-0" />}
             </div>
           </div>
         )}
