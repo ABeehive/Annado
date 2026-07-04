@@ -13,19 +13,6 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: unknown[]) => listenMock(...args),
 }));
 
-// localStorage is not available by default in jsdom, so provide a minimal mock
-if (!globalThis.localStorage) {
-  const store: Record<string, string> = {};
-  (globalThis as unknown as { localStorage: typeof localStorage }).localStorage = {
-    getItem: (key: string) => store[key] ?? null,
-    setItem: (key: string, value: string) => { store[key] = value; },
-    removeItem: (key: string) => { delete store[key]; },
-    clear: () => { Object.keys(store).forEach(k => delete store[k]); },
-    length: 0,
-    key: (index: number) => Object.keys(store)[index] ?? null,
-  } as unknown as Storage;
-}
-
 import { useTaskStore } from '../taskStore';
 
 describe('multi-select is cleared on view switches', () => {

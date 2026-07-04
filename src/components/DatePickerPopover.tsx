@@ -148,6 +148,8 @@ export function DatePickerPopover({
   const calendarDays = getCalendarDays(viewYear, viewMonth, weekStartsOn);
   const hasInput = inputValue.trim().length > 0;
 
+  // data-picker-portal exempts the portal'd popover from ExpandedTaskCard's
+  // click-outside collapse; data-picker-popover is the test hook. Distinct roles.
   return (
     <div
       ref={popoverRef}
