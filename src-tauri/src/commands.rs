@@ -186,6 +186,9 @@ pub fn set_vault_path(path: String, app: AppHandle) -> Result<Vec<Task>, String>
     config.is_obsidian_vault = path_buf.join(".obsidian").is_dir();
 
     let mut vault = Vault::new_with_folder_paths(path_buf, config.folder_paths.clone(), config.is_obsidian_vault);
+    if let Ok(dir) = app.path().app_config_dir() {
+        vault.set_state_path(dir.join("scan-state.json"));
+    }
     vault.set_excluded_paths(config.excluded_paths.clone());
     vault.set_task_format(crate::taskformat::TaskFormat::from_config(&config.task_format));
     vault.set_task_marker(config.task_marker_tag.clone());
