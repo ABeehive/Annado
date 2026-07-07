@@ -19,10 +19,6 @@ pub struct AppConfig {
     pub excluded_paths: Vec<String>,
     #[serde(default)]
     pub is_obsidian_vault: bool,
-    #[serde(default = "default_editor_type")]
-    pub editor_type: String,
-    #[serde(default)]
-    pub editor_custom_command: String,
     // Chosen write format ("annado" | "obsidian_tasks" | "dataview"). Empty = unset →
     // the frontend shows the first-run format picker; writing stays Annado until chosen.
     #[serde(default)]
@@ -30,12 +26,73 @@ pub struct AppConfig {
     // Import marker tag (e.g. "task"). Empty = import every checkbox (default).
     #[serde(default)]
     pub task_marker_tag: String,
+    // "Open In" preferences: per-target order/visibility and any custom openers.
+    #[serde(default)]
+    pub opener_prefs: OpenerPrefs,
     // Show a note's frontmatter tags on its tasks (display-only inheritance).
     #[serde(default)]
     pub inherit_frontmatter_tags: bool,
 }
 
-fn default_editor_type() -> String { "system".to_string() }
+/// A user-defined opener that runs an arbitrary command against a path. `command`
+/// is a template with `{file}` / `{dir}` / `{line}` placeholders (see
+/// [`expand_custom_command`]).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomOpener {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub command: String,
+}
+
+/// Persisted "Open In" preferences. `order` is opener ids (detected app ids and
+/// custom opener ids) in display order; `hidden` is the ids the user has hidden
+/// from the open-in affordance; `custom` holds user-defined openers.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenerPrefs {
+    #[serde(default)]
+    pub order: Vec<String>,
+    #[serde(default)]
+    pub hidden: Vec<String>,
+    #[serde(default)]
+    pub custom: Vec<CustomOpener>,
+    /// Explicitly-chosen default opener id; `None` falls back to the first
+    /// visible+usable opener in `order`.
+    #[serde(default)]
+    pub default_id: Option<String>,
+}
+
+/// Expand a custom-opener command template into argv. Substitutes `{file}` (the
+/// absolute path), `{dir}` (its parent directory), and `{line}` (best-effort —
+/// empty when unknown) into each token, then splits on whitespace.
+///
+/// Splitting is intentionally simple (macOS-first): the template is shell-split
+/// on whitespace *first*, then placeholders are substituted into each token, so
+/// a path containing spaces stays a single argv entry even though we don't honor
+/// quotes. This is unit-tested.
+pub fn expand_custom_command(template: &str, path: &str, line: Option<usize>) -> Vec<String> {
+    let dir = std::path::Path::new(path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    // `{line}` expands to empty when the caller has no line context (e.g. an
+    // entity file rather than a task), so a `{file}:{line}` template degrades
+    // to `{file}:` which editors accept.
+    let line = line.map(|l| l.to_string()).unwrap_or_default();
+    template
+        .split_whitespace()
+        .map(|tok| {
+            tok.replace("{file}", path)
+                .replace("{dir}", &dir)
+                .replace("{line}", &line)
+        })
+        .filter(|tok| !tok.is_empty())
+        .collect()
+}
 
 fn get_config_path(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_config_dir().ok().map(|dir| dir.join("config.json"))
@@ -58,13 +115,12 @@ fn load_config(app: &AppHandle) -> AppConfig {
             let vault_path_buf = PathBuf::from(vault_path.trim());
             let config = AppConfig {
                 is_obsidian_vault: vault_path_buf.join(".obsidian").is_dir(),
-                editor_type: default_editor_type(),
-                editor_custom_command: String::new(),
                 vault_path: Some(vault_path.trim().to_string()),
                 folder_paths: FolderPaths::default(),
                 excluded_paths: Vec::new(),
                 task_format: String::new(),
                 task_marker_tag: String::new(),
+                opener_prefs: OpenerPrefs::default(),
                 inherit_frontmatter_tags: false,
             };
             // Save migrated config and remove legacy file
@@ -633,67 +689,61 @@ pub fn set_is_obsidian_vault(value: bool, app: AppHandle) -> Result<(), String> 
     Ok(())
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EditorConfig {
-    pub editor_type: String,
-    pub editor_custom_command: String,
+// "Open In" preferences (per-target order / visibility / custom openers)
+
+#[tauri::command]
+pub fn get_opener_prefs(app: AppHandle) -> OpenerPrefs {
+    load_config(&app).opener_prefs
 }
 
 #[tauri::command]
-pub fn get_editor_config(app: AppHandle) -> EditorConfig {
-    let config = load_config(&app);
-    EditorConfig {
-        editor_type: config.editor_type,
-        editor_custom_command: config.editor_custom_command,
-    }
-}
-
-#[tauri::command]
-pub fn set_editor_config(editor_type: String, editor_custom_command: String, app: AppHandle) -> Result<(), String> {
+pub fn set_opener_prefs(opener_prefs: OpenerPrefs, app: AppHandle) -> Result<(), String> {
     let mut config = load_config(&app);
-    config.editor_type = editor_type;
-    config.editor_custom_command = editor_custom_command;
+    config.opener_prefs = opener_prefs;
     save_config(&app, &config)
 }
 
-#[tauri::command]
-pub fn open_file_in_editor(
-    file_path: String,
-    line_number: usize,
-    editor_type: String,
-    custom_command: String,
-) -> Result<(), String> {
-    match editor_type.as_str() {
-        "sublime" => {
-            std::process::Command::new("open")
-                .arg("-a")
-                .arg("Sublime Text")
-                .arg(&file_path)
-                .spawn()
-                .map_err(|e| format!("Failed to open in Sublime Text: {}", e))?;
-        }
-        "custom" if !custom_command.is_empty() => {
-            let cmd = custom_command
-                .replace("{file}", &file_path)
-                .replace("{line}", &line_number.to_string());
-            let mut parts = cmd.split_whitespace();
-            let program = parts.next().ok_or("Empty custom command")?;
-            let args: Vec<&str> = parts.collect();
-            std::process::Command::new(program)
-                .args(args)
-                .spawn()
-                .map_err(|e| format!("Failed to run custom command: {}", e))?;
-        }
-        _ => {
-            // "system" or fallback: open with system default
-            std::process::Command::new("open")
-                .arg(&file_path)
-                .spawn()
-                .map_err(|e| format!("Failed to open file: {}", e))?;
+/// Resolve a bare program name to an absolute path by searching PATH, the
+/// common Homebrew/local bin dirs, and well-known macOS app-bundle CLI dirs.
+/// A GUI app on macOS inherits a minimal PATH (`/usr/bin:/bin:...`) that
+/// misses Homebrew installs, and editor CLIs like `subl` often only exist
+/// inside their app bundle without any symlink — both would otherwise fail
+/// with "No such file or directory". A name that can't be found is returned
+/// as-is so spawn produces the real error.
+pub fn resolve_program(program: &str) -> String {
+    if program.contains('/') {
+        return program.to_string();
+    }
+    let base = std::env::var("PATH").unwrap_or_default();
+    let dirs = base.split(':').chain([
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/Applications/Sublime Text.app/Contents/SharedSupport/bin",
+        "/Applications/Visual Studio Code.app/Contents/Resources/app/bin",
+    ]);
+    for dir in dirs.filter(|d| !d.is_empty()) {
+        let candidate = std::path::Path::new(dir).join(program);
+        if candidate.is_file() {
+            return candidate.to_string_lossy().into_owned();
         }
     }
-    Ok(())
+    program.to_string()
+}
+
+/// Run a custom opener's command template against `path`. The template's
+/// `{file}` / `{dir}` / `{line}` placeholders are expanded (see
+/// [`expand_custom_command`]) and the result is spawned as a detached process.
+#[tauri::command]
+pub fn run_custom_opener(path: String, command: String, line: Option<usize>) -> Result<(), String> {
+    let argv = expand_custom_command(&command, &path, line);
+    let (program, args) = argv
+        .split_first()
+        .ok_or_else(|| "Custom opener command is empty".to_string())?;
+    std::process::Command::new(resolve_program(program))
+        .args(args)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to run custom opener `{}`: {}", program, e))
 }
 
 /// Snapshot of a deleted task's raw markdown block and its original file
@@ -939,6 +989,43 @@ mod tests {
         assert!(body.contains("- [ ] Welcome to Annado"));
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn resolve_program_finds_path_binaries_and_passes_through_the_rest() {
+        // A binary that exists on every Unix PATH resolves to an absolute path.
+        let sh = resolve_program("sh");
+        assert!(sh.starts_with('/'), "expected absolute path, got {sh}");
+        assert!(std::path::Path::new(&sh).is_file());
+
+        // Anything already containing a slash is passed through untouched.
+        assert_eq!(resolve_program("/usr/bin/env"), "/usr/bin/env");
+        assert_eq!(resolve_program("./local-tool"), "./local-tool");
+
+        // Unknown names fall through unchanged so spawn reports the real error.
+        assert_eq!(resolve_program("annado-no-such-tool"), "annado-no-such-tool");
+    }
+
+    #[test]
+    fn expand_custom_command_substitutes_file_dir_and_line() {
+        // With a line, `{line}` expands to the number.
+        let argv = expand_custom_command("code --goto {file}:{line}", "/Users/me/vault/Note.md", Some(12));
+        assert_eq!(argv, vec!["code", "--goto", "/Users/me/vault/Note.md:12"]);
+
+        // Without line context, `{line}` degrades to empty.
+        let argv = expand_custom_command("code --goto {file}:{line}", "/Users/me/vault/Note.md", None);
+        assert_eq!(argv, vec!["code", "--goto", "/Users/me/vault/Note.md:"]);
+
+        let argv = expand_custom_command("edit {dir}", "/Users/me/vault/Note.md", None);
+        assert_eq!(argv, vec!["edit", "/Users/me/vault"]);
+
+        // Both placeholders in one template.
+        let argv = expand_custom_command("tool {file} {dir}", "/a/b/c.txt", None);
+        assert_eq!(argv, vec!["tool", "/a/b/c.txt", "/a/b"]);
+
+        // A path with no parent yields an empty `{dir}` token, which is filtered out.
+        let argv = expand_custom_command("tool {dir}", "Note.md", None);
+        assert_eq!(argv, vec!["tool"]);
     }
 
     #[test]

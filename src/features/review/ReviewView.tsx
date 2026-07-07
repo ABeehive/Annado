@@ -1,12 +1,13 @@
 import { useState, useMemo, useRef, useEffect, createContext, useContext } from 'react';
 import { useTaskStore } from '../../stores/taskStore';
-import { Task, ProjectInfo, EditorType } from '../../types/task';
+import { Task, ProjectInfo } from '../../types/task';
 import { computeReviewData } from './computeReviewData';
 import { WhenDatePicker } from '../../components/WhenDatePicker';
 import { InlineMarkdown } from '../../components/MarkdownNotesRenderer';
 import { useWikilinkProps } from '../../hooks/useWikilinkProps';
 import { formatDateForDisplay, formatDateForStorage, getToday } from '../../utils/dates';
-import { openInEditor, editorLabel } from '../../utils/openInEditor';
+import { OpenFileButton } from '../../components/OpenFileButton';
+import { openEntityFile } from '../../utils/pathOpener';
 
 const STEPS = [
   { title: 'Process your inbox',   empty: 'Inbox is empty' },
@@ -109,34 +110,20 @@ function CardFlowLayout({ children, onSkip, tip = 'Tip: use 1–4 to quickly cho
   );
 }
 
-function CardLabel({ label, task, projectPath, vaultPath, isObsidianVault, editorType, editorCustomCommand }: {
+function CardLabel({ label, task, projectPath }: {
   label: string;
   task?: Task;
   projectPath?: string;
-  vaultPath?: string | null;
-  isObsidianVault?: boolean;
-  editorType?: EditorType;
-  editorCustomCommand?: string;
 }) {
   const accent = useContext(StepAccentContext);
   const filePath = task?.filePath ?? projectPath;
-  const lineNumber = task?.lineNumber ?? 1;
   return (
     <div className="flex items-center justify-between mb-3">
       <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: accent }}>
         {label}
       </p>
-      {filePath && vaultPath && (
-        <button
-          onClick={() => openInEditor(vaultPath, filePath, lineNumber, isObsidianVault ?? true, editorType ?? 'system', editorCustomCommand ?? '').catch(console.error)}
-          title={editorLabel(isObsidianVault ?? true, editorType ?? 'system')}
-          className="flex items-center gap-1 text-[11px] text-[#ADADB8] hover:text-primary dark:hover:text-primary-light transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
-          {isObsidianVault ? 'Obsidian' : 'Open'}
-        </button>
+      {filePath && (
+        <OpenFileButton path={filePath} showLabel />
       )}
     </div>
   );
@@ -313,7 +300,7 @@ function FlashCard({ task, isScheduling, onScheduleToggle, onScheduleClose, onAd
   onPark: () => void;
   onDelete: () => void;
 }) {
-  const { updateTask, vaultPath, isObsidianVault, editorType, editorCustomCommand } = useTaskStore();
+  const { updateTask } = useTaskStore();
   const wikilinkProps = useWikilinkProps();
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -337,7 +324,7 @@ function FlashCard({ task, isScheduling, onScheduleToggle, onScheduleClose, onAd
 
   return (
     <CardBody>
-      <CardLabel label="From Inbox" task={task} vaultPath={vaultPath} isObsidianVault={isObsidianVault} editorType={editorType} editorCustomCommand={editorCustomCommand} />
+      <CardLabel label="From Inbox" task={task} />
 
       {/* Title */}
       {isEditingTitle ? (
@@ -430,7 +417,6 @@ function OverdueTaskCard({ task, isScheduling, onScheduleToggle, onScheduleClose
   onComplete: () => void;
   onDelete: () => void;
 }) {
-  const { vaultPath, isObsidianVault, editorType, editorCustomCommand } = useTaskStore();
   const wikilinkProps = useWikilinkProps();
 
   const dateInfo = task.deadline
@@ -441,7 +427,7 @@ function OverdueTaskCard({ task, isScheduling, onScheduleToggle, onScheduleClose
 
   return (
     <CardBody>
-      <CardLabel label="Overdue" task={task} vaultPath={vaultPath} isObsidianVault={isObsidianVault} editorType={editorType} editorCustomCommand={editorCustomCommand} />
+      <CardLabel label="Overdue" task={task} />
 
       <div className="text-[20px] font-medium text-[#1A1A1A] dark:text-[#E8E8E8] leading-snug mb-2">
         <InlineMarkdown text={task.title} wikilinkProps={wikilinkProps} />
@@ -478,7 +464,6 @@ function StalledTaskCard({ task, isScheduling, onScheduleToggle, onScheduleClose
   onKeep: () => void;
   onDelete: () => void;
 }) {
-  const { vaultPath, isObsidianVault, editorType, editorCustomCommand } = useTaskStore();
   const wikilinkProps = useWikilinkProps();
 
   const daysSinceCreated = task.createdDate
@@ -487,7 +472,7 @@ function StalledTaskCard({ task, isScheduling, onScheduleToggle, onScheduleClose
 
   return (
     <CardBody>
-      <CardLabel label="Stalled" task={task} vaultPath={vaultPath} isObsidianVault={isObsidianVault} editorType={editorType} editorCustomCommand={editorCustomCommand} />
+      <CardLabel label="Stalled" task={task} />
 
       <div className="text-[20px] font-medium text-[#1A1A1A] dark:text-[#E8E8E8] leading-snug mb-2">
         <InlineMarkdown text={task.title} wikilinkProps={wikilinkProps} />
@@ -543,9 +528,9 @@ function QuietProjectCard({ project, onOpenObsidian, onIgnore }: {
 
 export function ReviewView() {
   const {
-    tasks, availableProjects, vaultPath,
+    tasks, availableProjects,
     setCurrentView, updateTask, deleteTask, toggleTaskComplete,
-    isObsidianVault, editorType, editorCustomCommand,
+    pathOpeners, openerPrefs, isObsidianVault,
   } = useTaskStore();
 
   // Wikilink rendering — used for step 4 (Next Week) list
@@ -671,8 +656,7 @@ export function ReviewView() {
       if (e.key === 'o' || e.key === 'O') {
         e.preventDefault();
         const fp = (currentItem as Task).filePath ?? (currentItem as ProjectInfo).path;
-        const ln = (currentItem as Task).lineNumber ?? 1;
-        if (vaultPath && fp) openInEditor(vaultPath, fp, ln, isObsidianVault, editorType, editorCustomCommand).catch(console.error);
+        if (fp) openEntityFile(fp, pathOpeners, openerPrefs, isObsidianVault).catch(console.error);
         return;
       }
 
@@ -708,14 +692,14 @@ export function ReviewView() {
         else if (e.key === '4') { deleteTask(task.id); setUndoStack({ id: task.id, title: task.title }); advance(2); }
       } else if (step === 3 && currentQuiet) {
         const proj = currentQuiet;
-        if (e.key === '1' && vaultPath) openInEditor(vaultPath, proj.path, 1, isObsidianVault, editorType, editorCustomCommand).catch(console.error);
+        if (e.key === '1') openEntityFile(proj.path, pathOpeners, openerPrefs, isObsidianVault).catch(console.error);
         else if (e.key === '2') { dismiss(proj.path); advance(3); }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [step, currentInbox, currentOverdue, currentStalled, currentQuiet, toggleTaskComplete, updateTask, deleteTask, setCurrentView, vaultPath, skippedByStep, isObsidianVault, editorType, editorCustomCommand]);
+  }, [step, currentInbox, currentOverdue, currentStalled, currentQuiet, toggleTaskComplete, updateTask, deleteTask, setCurrentView, skippedByStep, pathOpeners, openerPrefs, isObsidianVault]);
 
   // Progress bar values for steps 0–3
   const getProgress = (s: number) => {
@@ -852,7 +836,7 @@ export function ReviewView() {
                 {step === 3 && currentQuiet && (
                   <QuietProjectCard
                     project={currentQuiet}
-                    onOpenObsidian={() => { if (vaultPath) openInEditor(vaultPath, currentQuiet.path, 1, isObsidianVault, editorType, editorCustomCommand).catch(console.error); }}
+                    onOpenObsidian={() => { openEntityFile(currentQuiet.path, pathOpeners, openerPrefs, isObsidianVault).catch(console.error); }}
                     onIgnore={() => { dismiss(currentQuiet.path); advance(3); }}
                   />
                 )}
