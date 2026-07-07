@@ -9,6 +9,7 @@ function makeTask(over: Partial<Task> & { id: string }): Task {
     when: 'anytime',
     deadline: null,
     tags: [],
+    inheritedTags: [],
     checklist: [],
     completed: false,
     completedDate: null,
