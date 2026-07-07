@@ -15,6 +15,17 @@ fn default_areas_pattern() -> String { "Areas".to_string() }
 fn default_daily_notes_folder() -> String { "00. Daily Notes".to_string() }
 fn default_daily_notes_format() -> String { "YYYY/MM-MMMM/YYYY-MM-DD".to_string() }
 
+/// Append `line` to `content` on its own line, keeping exactly one trailing newline
+/// whether or not `content` already ended with one. Shared by create_task and the
+/// daily-note note logger so the newline handling lives in one place.
+fn append_line(content: &str, line: &str) -> String {
+    if content.ends_with('\n') || content.is_empty() {
+        format!("{}{}\n", content, line)
+    } else {
+        format!("{}\n{}\n", content, line)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FolderPaths {
@@ -1137,13 +1148,8 @@ impl Vault {
         // Format and append to file
         let file_project = derive_project_name(&file_path.to_string_lossy());
         let task_line = parser::format_task_line_with_marker(&task, today, file_project.as_deref(), &project_names, self.current_task_format(), &self.current_task_marker());
-        let new_content = if content.ends_with('\n') || content.is_empty() {
-            format!("{}{}\n", content, task_line)
-        } else {
-            format!("{}\n{}\n", content, task_line)
-        };
 
-        fs::write(&file_path, new_content)
+        fs::write(&file_path, append_line(&content, &task_line))
             .map_err(|e| format!("Failed to write file: {}", e))?;
 
         // Add to cache
@@ -1153,6 +1159,20 @@ impl Vault {
         }
 
         Ok(task)
+    }
+
+    /// Append a plain (non-task) bullet to today's daily note. Written as `- {text}`,
+    /// which the task parser (checkbox-only) ignores — so this is one-way: it lands in the
+    /// note but never becomes a task in Annado. No cache/scan side effects.
+    pub fn append_daily_note_line(&self, text: &str) -> Result<(), String> {
+        let today = Local::now().date_naive();
+        let file_path = self.get_daily_note_path(today);
+        self.ensure_daily_note_exists(&file_path, today)?;
+        let content = fs::read_to_string(&file_path).unwrap_or_default();
+        let line = format!("- {}", text.trim());
+        fs::write(&file_path, append_line(&content, &line))
+            .map_err(|e| format!("Failed to write file: {}", e))?;
+        Ok(())
     }
 
     fn read_obsidian_daily_notes_config(&self) -> Option<ObsidianDailyNotesConfig> {
@@ -3095,6 +3115,28 @@ mod tests {
         fs::create_dir_all(&dir).expect("create temp vault dir");
         let vault = Vault::new_with_folder_paths(dir.clone(), FolderPaths::default(), false);
         (dir, vault)
+    }
+
+    #[test]
+    fn test_append_daily_note_line_logs_a_bullet_not_a_task() {
+        let (dir, vault) = make_temp_vault();
+
+        vault.append_daily_note_line("boodschappen").expect("append line");
+
+        // It lands in today's daily note as a plain bullet (not a checkbox).
+        let today = Local::now().date_naive();
+        let content = fs::read_to_string(vault.get_daily_note_path(today)).expect("read daily note");
+        assert!(content.contains("- boodschappen"), "content: {content}");
+        assert!(!content.contains("- [ ]"), "must not be a task checkbox: {content}");
+
+        // One-way: scanning never turns the bullet into a task.
+        let tasks = vault.scan();
+        assert!(
+            !tasks.iter().any(|t| t.title.contains("boodschappen")),
+            "the bullet must not become a task"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

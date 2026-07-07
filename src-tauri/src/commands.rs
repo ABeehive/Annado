@@ -424,6 +424,12 @@ pub fn create_task(payload: CreateTaskPayload) -> Result<Task, String> {
     with_vault_result(|vault| vault.create_task(&payload.title, when))
 }
 
+/// Log a plain (non-task) line to today's daily note — one-way, never becomes a task.
+#[tauri::command]
+pub fn append_daily_note_line(text: String) -> Result<(), String> {
+    with_vault_result(|vault| vault.append_daily_note_line(&text))
+}
+
 #[tauri::command]
 pub fn toggle_task_complete(id: String) -> Result<Task, String> {
     let vault_lock = get_vault_lock().read();

@@ -198,9 +198,17 @@ export function TrayPopup() {
 
   const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quickAddTitle.trim()) return;
+    const raw = quickAddTitle.trim();
+    if (!raw) return;
     try {
-      await invoke('create_task', { payload: { title: quickAddTitle.trim(), when: 'today' } });
+      if (raw.startsWith('-')) {
+        // Leading "-" logs a plain (non-task) line to today's daily note. One-way:
+        // it lands in the note but never becomes a task in Annado.
+        const text = raw.replace(/^-\s*/, '').trim();
+        if (text) await invoke('append_daily_note_line', { text });
+      } else {
+        await invoke('create_task', { payload: { title: raw, when: 'today' } });
+      }
       setQuickAddTitle('');
     } catch (err) {
       console.error('[tray] quick-add failed', err);
@@ -236,7 +244,7 @@ export function TrayPopup() {
               type="text"
               value={quickAddTitle}
               onChange={e => setQuickAddTitle(e.target.value)}
-              placeholder="Add task for today…"
+              placeholder="Add task (or start with - for a note)…"
               className="w-full text-[13px] bg-transparent text-[#1A1A1A] dark:text-[#E8E8E8] placeholder-[#CCC] dark:placeholder-[#555] focus:outline-none py-1"
             />
           </form>
