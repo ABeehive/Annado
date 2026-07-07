@@ -7,11 +7,13 @@ import { TagSuggestions } from './TagSuggestions';
 // Tag editor with add/remove support and autocomplete in expanded view
 export function TagEditor({
   tags,
+  inheritedTags = [],
   onTagClick,
   onTagsChange,
   tagColors,
 }: {
   tags: string[];
+  inheritedTags?: string[];
   onTagClick: (tag: string) => void;
   onTagsChange: (tags: string[]) => void;
   tagColors?: Record<string, string>;
@@ -54,6 +56,22 @@ export function TagEditor({
 
   return (
     <div className="px-5 pb-4 pl-14 flex flex-wrap items-center gap-2">
+      {inheritedTags.map((tag) => {
+        // Same palette as own chips below, slightly more muted; dashed = inherited.
+        const color = tagColors ? getTagColor(tag, tagColors) : '#5C6BC0';
+        return (
+          <span
+            key={`inherited-${tag}`}
+            title="Inherited from the note's frontmatter"
+            className="inline-flex items-center gap-1 text-[12px] px-2.5 py-0.5 rounded-full border border-dashed"
+            style={{ backgroundColor: `${color}14`, color, borderColor: `${color}59` }}
+          >
+            <button onClick={(e) => { e.stopPropagation(); onTagClick(tag); }} className="hover:underline">
+              #{tag}
+            </button>
+          </span>
+        );
+      })}
       {tags.map((tag) => {
         const color = tagColors ? getTagColor(tag, tagColors) : '#5C6BC0';
         return (

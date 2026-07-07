@@ -22,6 +22,7 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     when: 'inbox',
     deadline: null,
     tags: [],
+    inheritedTags: [],
     checklist: [],
     completed: false,
     completedDate: null,

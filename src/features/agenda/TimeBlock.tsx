@@ -10,6 +10,7 @@ import { DAY_START, DAY_END, PIXELS_PER_MINUTE, BLOCK_GAP_PX } from './constants
 import { formatTime, formatDuration } from './utils';
 import { InlineMarkdown } from '../../components/MarkdownNotesRenderer';
 import { getMeetingUrl } from './meetingUrl';
+import { OpenFileButton } from '../../components/OpenFileButton';
 
 const MIN_BLOCK_HEIGHT = 26;
 const MIN_DURATION = 15;
@@ -348,7 +349,7 @@ export function TimeBlock({ block, columnOffset = 0, columnWidth = '100%', overl
       <div
         ref={setNodeRef}
         {...(isDraggableTask ? { ...attributes, ...listeners } : {})}
-        className={`agenda-block absolute rounded-lg px-2.5 py-1.5 overflow-hidden cursor-pointer select-none
+        className={`agenda-block group absolute rounded-lg px-2.5 py-1.5 overflow-hidden cursor-pointer select-none
           ${isDragging ? 'opacity-50 no-transition' : ''}
           ${isResizing ? 'no-transition' : ''}
           ${isNonBlocking ? 'opacity-50' : ''}
@@ -417,6 +418,9 @@ export function TimeBlock({ block, columnOffset = 0, columnWidth = '100%', overl
                 <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />
               </svg>
             </button>
+          )}
+          {isTask && block.task?.filePath && (
+            <OpenFileButton path={block.task.filePath} line={block.task.lineNumber} size="sm" />
           )}
         </div>
         {height >= 30 && (

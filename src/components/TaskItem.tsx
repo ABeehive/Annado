@@ -9,6 +9,7 @@ import { PRIORITY_CONFIG, resolveTagColor } from '../utils/projectColors';
 import { formatWhenDisplay, formatDeadlineCountdown, getDeadlineUrgency, formatDateForDisplay, getToday } from '../utils/dates';
 import { InlineMarkdown, WikilinkProps } from './MarkdownNotesRenderer';
 import { ExpandedTaskCard } from './ExpandedTaskCard';
+import { OpenFileButton } from './OpenFileButton';
 
 interface TaskItemProps {
   task: Task;
@@ -250,6 +251,24 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
                 </button>
               );
             })}
+            {!task.completed && task.inheritedTags.map((tag) => {
+              // Same color resolution as own tags; the dashed border says "inherited".
+              const customColor = resolveTagColor(tag, tagColors);
+              return (
+                <button
+                  key={`inherited-${tag}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedTag(tag);
+                  }}
+                  title="Inherited from the note's frontmatter"
+                  className="inline-flex items-center text-[11px] px-2 py-[1px] rounded-full border border-dashed border-[#D0D0D5] dark:border-[#555] bg-transparent text-[#B0B0B5] dark:text-[#777] hover:bg-[#F0F0F0] dark:hover:bg-[#3A3A3A] transition-colors flex-shrink-0"
+                  style={customColor ? { color: `${customColor}CC`, borderColor: `${customColor}73` } : undefined}
+                >
+                  {tag}
+                </button>
+              );
+            })}
           </div>
 
           {/* Checklist indicator */}
@@ -290,13 +309,18 @@ function CollapsedTaskRow({ task, showProject, isSelected, isSoleSelection, isLi
           )}
           {getDeadlineDisplay()}
           {/*
-            Delete affordance — pinned to the row's right edge, after the other
-            indicators. The wide padded wrapper is the *visibility* hover zone
-            only (clicks there fall through to the row); the click target is
-            just the icon button inside. Always rendered (opacity toggle only)
-            so the fade never reflows the list.
+            Right-edge action cluster — open-in + delete, pinned after the
+            other indicators. The wide padded wrapper is the *visibility* hover
+            zone only (clicks there fall through to the row); the click targets
+            are just the icon buttons inside. Always rendered (opacity toggle
+            only) so the fade never reflows the list.
           */}
-          <div className="group/del flex items-center justify-end flex-shrink-0 pr-2 -mr-2 py-3 -my-3 pl-14 -ml-14">
+          <div className="group/del flex items-center justify-end gap-2 flex-shrink-0 pr-2 -mr-2 py-3 -my-3 pl-14 -ml-14">
+            <OpenFileButton
+              path={task.filePath}
+              line={task.lineNumber}
+              className="opacity-0 group-hover/del:opacity-100 transition-opacity duration-150"
+            />
             <button
               type="button"
               aria-label="Delete task"

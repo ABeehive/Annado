@@ -5,6 +5,7 @@ import type { AgendaSlice } from './slices/agendaSlice';
 import type { UISlice } from './slices/uiSlice';
 import type { PanelSlice } from './slices/panelSlice';
 import type { TaskSlice } from './slices/taskSlice';
+import { setOpenerErrorReporter } from '../utils/pathOpener';
 import { createSettingsSlice } from './slices/settingsSlice';
 import { createCalendarSlice } from './slices/calendarSlice';
 import { createAgendaSlice } from './slices/agendaSlice';
@@ -22,6 +23,9 @@ export const useTaskStore = create<RootStore>()((...args) => ({
   ...createPanelSlice(...args),
   ...createTaskSlice(...args),
 }));
+
+// Opener failures happen outside store actions; surface them via the error toast.
+setOpenerErrorReporter((message) => useTaskStore.setState({ error: message }));
 
 export type { QuickAddPrefill } from './slices/panelSlice';
 export type { RecentItem } from './slices/uiSlice';

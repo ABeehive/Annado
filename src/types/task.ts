@@ -76,6 +76,7 @@ export interface Task {
   when: WhenValue;
   deadline: string | null;
   tags: string[];
+  inheritedTags: string[];
   checklist: ChecklistItem[];
   completed: boolean;
   completedDate: string | null;
@@ -203,8 +204,6 @@ export interface FolderPaths {
   dailyNotesFolder: string;
   dailyNotesFormat: string;
 }
-
-export type EditorType = 'system' | 'vscode' | 'sublime' | 'custom';
 
 // Calendar types
 export interface CalendarInfo {

@@ -2,6 +2,7 @@ mod calendar;
 mod commands;
 mod notification_scheduler;
 mod parser;
+mod path_openers;
 mod recurrence;
 mod taskformat;
 mod vault;
@@ -12,17 +13,18 @@ use commands::{
     toggle_checklist_item, rename_checklist_item, delete_checklist_item, update_project_metadata, update_task,
     migrate_recurrence_dry_run, migrate_recurrence_apply, get_recurring_template_count,
     get_task_format, set_task_format, detect_task_format,
-    get_task_marker, set_task_marker,
+    get_task_marker, set_task_marker, get_inherit_frontmatter_tags, set_inherit_frontmatter_tags,
     get_folder_paths, set_folder_paths, delete_task, restore_task,
     get_excluded_paths, set_excluded_paths, set_annado_exclude_in_file,
     create_project, rename_project, create_person, rename_person,
     get_calendars, get_calendar_events, check_calendar_access, open_calendar_at_date,
     delete_calendar_event,
     get_is_obsidian_vault, set_is_obsidian_vault,
-    get_editor_config, set_editor_config, open_file_in_editor,
+    get_opener_prefs, set_opener_prefs, run_custom_opener,
     show_main_window, open_task_in_main, get_notification_prefs, save_notification_prefs,
     set_tray_enabled, send_test_notification,
 };
+use path_openers::{detect_path_openers, refresh_path_openers, open_path_with, open_path_default};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
@@ -358,6 +360,8 @@ pub fn run() {
             detect_task_format,
             get_task_marker,
             set_task_marker,
+            get_inherit_frontmatter_tags,
+            set_inherit_frontmatter_tags,
             get_folder_paths,
             set_folder_paths,
             get_excluded_paths,
@@ -374,15 +378,19 @@ pub fn run() {
             delete_calendar_event,
             get_is_obsidian_vault,
             set_is_obsidian_vault,
-            get_editor_config,
-            set_editor_config,
-            open_file_in_editor,
+            get_opener_prefs,
+            set_opener_prefs,
+            run_custom_opener,
             show_main_window,
             open_task_in_main,
             get_notification_prefs,
             save_notification_prefs,
             set_tray_enabled,
             send_test_notification,
+            detect_path_openers,
+            refresh_path_openers,
+            open_path_with,
+            open_path_default,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

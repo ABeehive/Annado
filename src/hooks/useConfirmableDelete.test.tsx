@@ -12,7 +12,7 @@ import { useTaskStore } from '../stores/taskStore';
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
     id: 'abc123', title: 'Buy groceries', notes: '', when: 'inbox', deadline: null,
-    tags: [], checklist: [], completed: false, completedDate: null, createdDate: null,
+    tags: [], inheritedTags: [], checklist: [], completed: false, completedDate: null, createdDate: null,
     filePath: '/vault/Tasks.md', lineNumber: 4, projects: [], indentLevel: 0,
     priority: null, persons: [], recurrence: null, durationMinutes: null,
     scheduledTime: null, ...overrides,

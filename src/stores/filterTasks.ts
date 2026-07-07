@@ -27,7 +27,7 @@ export function filterTasks(
 
   if (tag) {
     return tasks
-      .filter((task) => tagsMatchFilter(task.tags, tag) && !task.completed)
+      .filter((task) => tagsMatchFilter([...task.tags, ...task.inheritedTags], tag) && !task.completed)
       .sort((a, b) => getDateSortKey(a) - getDateSortKey(b));
   }
 
@@ -121,7 +121,7 @@ export function filterTasksForSmartList(
   if (filter.person)
     base = base.filter((t) => t.persons.includes(filter.person!));
   if (filter.tag)
-    base = base.filter((t) => tagsMatchFilter(t.tags, filter.tag!));
+    base = base.filter((t) => tagsMatchFilter([...t.tags, ...t.inheritedTags], filter.tag!));
   if (filter.dueWithin) {
     const { amount, unit } = filter.dueWithin;
     const cutoff = parseLocalDate(todayStr);

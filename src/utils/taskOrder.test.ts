@@ -10,6 +10,7 @@ function makeTask(filePath: string, lineNumber: number): Task {
     when: 'inbox',
     deadline: null,
     tags: [],
+    inheritedTags: [],
     checklist: [],
     completed: false,
     completedDate: null,

@@ -161,6 +161,10 @@ pub struct Task {
     pub when: WhenValue,
     pub deadline: Option<String>, // ISO date string
     pub tags: Vec<String>,
+    // Tags inherited from the note's YAML frontmatter. Display/filter only —
+    // never written back to the task line (unlike `tags`).
+    #[serde(default)]
+    pub inherited_tags: Vec<String>,
     pub checklist: Vec<ChecklistItem>,
     pub completed: bool,
     pub completed_date: Option<String>,
@@ -438,6 +442,7 @@ pub fn parse_file_with_marker(
                     when,
                     deadline,
                     tags,
+                    inherited_tags: Vec::new(),
                     checklist,
                     completed: parsed.completed,
                     completed_date,
@@ -975,6 +980,7 @@ mod tests {
             when: WhenValue::Date("2026-02-14".to_string()),
             deadline: None,
             tags: Vec::new(),
+            inherited_tags: Vec::new(),
             checklist: Vec::new(),
             completed: false,
             completed_date: None,

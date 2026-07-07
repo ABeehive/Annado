@@ -181,6 +181,26 @@ fn resolve_wikilinks(tasks: &mut [Task], person_names: &std::collections::HashSe
     }
 }
 
+/// Layer frontmatter tags onto a file's tasks as inherited tags (post-parse,
+/// like `persons`). Own line tags win: duplicates are dropped case-insensitively.
+fn apply_inherited_tags(tasks: &mut [Task], content: &str, global_enabled: bool) {
+    let inherit = Vault::annado_inherit_tags_override(content).unwrap_or(global_enabled);
+    if !inherit {
+        return;
+    }
+    let fm_tags = Vault::frontmatter_tags(content);
+    if fm_tags.is_empty() {
+        return;
+    }
+    for task in tasks.iter_mut() {
+        task.inherited_tags = fm_tags
+            .iter()
+            .filter(|ft| !task.tags.iter().any(|t| t.eq_ignore_ascii_case(ft)))
+            .cloned()
+            .collect();
+    }
+}
+
 /// Walk the vault once and collect the person/project names used for wiki-link
 /// resolution. The watcher caches the result and only refreshes it when a file
 /// inside one of the relevant folders changes.
@@ -238,6 +258,32 @@ fn append_marker_to_lines(file_path: &Path, line_numbers: &[usize], marker: &str
     }
 }
 
+/// Write a created-date marker for the given (file_path, line_number) entries,
+/// grouped per file. Shared by the watcher flush and the startup back-fill.
+fn write_created_markers(entries: &[(String, usize)], task_format: crate::taskformat::TaskFormat, today_str: &str) {
+    let Some(marker) = crate::taskformat::encode_created(&Some(today_str.to_string()), task_format) else {
+        return;
+    };
+    let mut by_file: HashMap<String, Vec<usize>> = HashMap::new();
+    for (fp, line) in entries {
+        by_file.entry(fp.clone()).or_default().push(*line);
+    }
+    for (fp, lines) in &by_file {
+        append_marker_to_lines(Path::new(fp), lines, &marker);
+    }
+}
+
+/// Drop queued @created stamps whose task disappeared from the cache or already
+/// carries a created-date — a scan() back-fill (settings changes rescan) can stamp
+/// a task inside the watcher's 2 s stability window, and flushing it again would
+/// write a second @created marker on the same line.
+fn retain_unstamped_pending(
+    pending: &mut HashMap<String, std::time::Instant>,
+    cache: &HashMap<String, Task>,
+) {
+    pending.retain(|id, _| cache.get(id).map_or(false, |t| t.created_date.is_none()));
+}
+
 /// Accumulate changed markdown paths from a watch event. Directory-level changes
 /// (create/rename/delete of folders) can move many files at once without emitting
 /// per-file events, so they request a full rescan instead.
@@ -271,9 +317,13 @@ pub struct Vault {
     // Shared so the background file-watcher reads the live value (no restart needed on change).
     task_format: Arc<RwLock<crate::taskformat::TaskFormat>>,
     task_marker: Arc<RwLock<String>>, // import marker tag ("" = import every checkbox)
+    inherit_tags: Arc<RwLock<bool>>, // global tag-inheritance setting (frontmatter tags)
     recurring_template_count: Arc<RwLock<usize>>, // legacy templates found in the last scan
     tasks: Arc<RwLock<HashMap<String, Task>>>,
     watcher: Option<RecommendedWatcher>,
+    // Where the last-scan timestamp lives (app config dir). None = startup
+    // back-fill disabled (unit tests that don't opt in).
+    state_path: Option<PathBuf>,
 }
 
 /// Report from the one-time recurrence migration (template model -> inline @repeat model).
@@ -301,6 +351,7 @@ fn build_inline_recurring_task(
         when: WhenValue::Date(next.format("%Y-%m-%d").to_string()),
         deadline: None,
         tags: template.tags.clone(),
+        inherited_tags: Vec::new(),
         checklist: Vec::new(),
         completed: false,
         completed_date: None,
@@ -326,14 +377,53 @@ impl Vault {
             is_obsidian_vault,
             task_format: Arc::new(RwLock::new(crate::taskformat::TaskFormat::Annado)),
             task_marker: Arc::new(RwLock::new(String::new())),
+            inherit_tags: Arc::new(RwLock::new(false)),
             recurring_template_count: Arc::new(RwLock::new(0)),
             tasks: Arc::new(RwLock::new(HashMap::new())),
             watcher: None,
+            state_path: None,
         }
     }
 
     pub fn set_folder_paths(&mut self, folder_paths: FolderPaths) {
         self.folder_paths = folder_paths;
+    }
+
+    /// Set where the last-scan timestamp is persisted, enabling the startup
+    /// back-fill in `scan()`. Not called = back-fill stays disabled.
+    pub fn set_state_path(&mut self, path: PathBuf) {
+        self.state_path = Some(path);
+    }
+
+    /// Loads the last-scan timestamp, but only if it was saved for THIS vault.
+    /// A single global state file is shared across all vaults a user opens; if
+    /// its `vault_path` doesn't match (or is missing, e.g. an older state file),
+    /// treat it as if this vault had never been scanned, so a freshly cloned or
+    /// newly opened vault never inherits another vault's stale timestamp and
+    /// mass-stamps its historic tasks.
+    fn load_last_scan_unix(&self) -> Option<u64> {
+        let p = self.state_path.as_ref()?;
+        let content = fs::read_to_string(p).ok()?;
+        let v: serde_json::Value = serde_json::from_str(&content).ok()?;
+        let stored_vault_path = v.get("vault_path")?.as_str()?;
+        if stored_vault_path != self.path.to_string_lossy() {
+            return None;
+        }
+        v.get("last_scan_unix")?.as_u64()
+    }
+
+    fn save_last_scan_unix(&self) {
+        if let Some(p) = &self.state_path {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let payload = serde_json::json!({
+                "last_scan_unix": now,
+                "vault_path": self.path.to_string_lossy(),
+            });
+            let _ = fs::write(p, payload.to_string());
+        }
     }
 
     pub fn set_task_format(&self, task_format: crate::taskformat::TaskFormat) {
@@ -350,6 +440,14 @@ impl Vault {
 
     pub fn current_task_marker(&self) -> String {
         self.task_marker.read().clone()
+    }
+
+    pub fn set_inherit_tags(&self, enabled: bool) {
+        *self.inherit_tags.write() = enabled;
+    }
+
+    pub fn inherit_tags_enabled(&self) -> bool {
+        *self.inherit_tags.read()
     }
 
     /// Non-hidden, non-excluded `.md` files anywhere in the vault. The single place that
@@ -435,6 +533,52 @@ impl Vault {
         false
     }
 
+    /// Tags from a note's YAML frontmatter `tags:` property — list form or a
+    /// comma-separated string — normalized without a leading '#'.
+    pub fn frontmatter_tags(content: &str) -> Vec<String> {
+        let Some((yaml, _)) = Self::parse_frontmatter(content) else {
+            return Vec::new();
+        };
+        let serde_yml::Value::Mapping(map) = yaml else {
+            return Vec::new();
+        };
+        let mut out: Vec<String> = Vec::new();
+        match map.get(&serde_yml::Value::String("tags".to_string())) {
+            Some(serde_yml::Value::Sequence(seq)) => {
+                for v in seq {
+                    if let Some(s) = v.as_str() {
+                        let t = s.trim().trim_start_matches('#');
+                        if !t.is_empty() {
+                            out.push(t.to_string());
+                        }
+                    }
+                }
+            }
+            Some(serde_yml::Value::String(s)) => {
+                for part in s.split(',') {
+                    let t = part.trim().trim_start_matches('#');
+                    if !t.is_empty() {
+                        out.push(t.to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+        out
+    }
+
+    /// Per-note override for tag inheritance: Some(value) when the note sets
+    /// `annado_inherit_tags`, None when absent (global setting applies).
+    pub fn annado_inherit_tags_override(content: &str) -> Option<bool> {
+        let (yaml, _) = Self::parse_frontmatter(content)?;
+        if let serde_yml::Value::Mapping(map) = yaml {
+            return map
+                .get(&serde_yml::Value::String("annado_inherit_tags".to_string()))
+                .and_then(|v| v.as_bool());
+        }
+        None
+    }
+
     /// Whether a file is a legacy recurring-task template, identified by the trio of
     /// frontmatter keys the old format always wrote together (robust against a stray
     /// `template_id:` in an unrelated note). Used to detect + skip templates regardless
@@ -499,6 +643,9 @@ impl Vault {
         let projects = self.get_all_projects();
         let project_names: std::collections::HashSet<String> = projects.iter().map(|p| p.name.clone()).collect();
 
+        let last_scan_unix = self.load_last_scan_unix();
+        let mut backfill: Vec<(String, usize)> = Vec::new();
+
         for path in self.walk_md_files() {
             if let Ok(content) = fs::read_to_string(&path) {
                 // Skip legacy recurring-template files (anywhere) so their body checkbox
@@ -519,11 +666,36 @@ impl Vault {
 
                 apply_areas_project(&mut tasks, &self.folder_paths.areas_pattern);
                 resolve_wikilinks(&mut tasks, &person_names, &project_names);
+                apply_inherited_tags(&mut tasks, &content, self.inherit_tags_enabled());
+
+                // Startup back-fill: stamp created-dates only for files modified
+                // since the previous scan, so a first run or vault import never
+                // mass-stamps historic tasks.
+                if let Some(last) = last_scan_unix {
+                    let mtime_unix = fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs());
+                    if mtime_unix.map_or(false, |m| m > last) {
+                        let today_str = today.format("%Y-%m-%d").to_string();
+                        for task in tasks.iter_mut().filter(|t| t.created_date.is_none()) {
+                            backfill.push((task.file_path.clone(), task.line_number));
+                            task.created_date = Some(today_str.clone());
+                        }
+                    }
+                }
+
                 all_tasks.extend(tasks);
             }
         }
 
         *self.recurring_template_count.write() = template_count;
+
+        if !backfill.is_empty() {
+            write_created_markers(&backfill, self.current_task_format(), &today.format("%Y-%m-%d").to_string());
+        }
+        self.save_last_scan_unix();
 
         // Update internal cache
         {
@@ -596,7 +768,7 @@ impl Vault {
         Ok(())
     }
 
-    pub fn update_task(&self, updated_task: Task) -> Result<(), String> {
+    pub fn update_task(&self, mut updated_task: Task) -> Result<(), String> {
         let today = Local::now().date_naive();
 
         // Validate file path is within vault
@@ -700,6 +872,12 @@ impl Vault {
         let new_content = new_lines.join("\n");
         fs::write(&updated_task.file_path, new_content)
             .map_err(|e| format!("Failed to write file: {}", e))?;
+
+        // Inheritance is derived from the note's frontmatter at scan time; keep
+        // it across in-place updates so the pills don't flicker away.
+        if let Some(prev) = self.tasks.read().get(&updated_task.id) {
+            updated_task.inherited_tags = prev.inherited_tags.clone();
+        }
 
         // Update cache
         {
@@ -929,6 +1107,7 @@ impl Vault {
             when: when.clone(),
             deadline: None,
             tags: Vec::new(),
+            inherited_tags: Vec::new(),
             checklist: Vec::new(),
             completed: false,
             completed_date: None,
@@ -1045,6 +1224,7 @@ impl Vault {
         // Share the live cells so format/marker changes take effect without an app restart.
         let task_marker = Arc::clone(&self.task_marker);
         let task_format = Arc::clone(&self.task_format);
+        let inherit_tags = Arc::clone(&self.inherit_tags);
 
         // Watcher thread: debounce a burst of events, then re-parse only the
         // changed files and diff them into the cache (no full-vault rescans).
@@ -1140,6 +1320,7 @@ impl Vault {
                             let mut tasks = parser::parse_file_with_marker(&content, &file_path_str, today, &task_marker);
                             apply_areas_project(&mut tasks, &areas_pattern);
                             resolve_wikilinks(&mut tasks, &person_names, &project_names);
+                            apply_inherited_tags(&mut tasks, &content, *inherit_tags.read());
                             Some(tasks)
                         }
                     } else {
@@ -1195,7 +1376,7 @@ impl Vault {
                 {
                     let now = Instant::now();
                     let cache = tasks_ref.read();
-                    pending_created.retain(|id, _| cache.contains_key(id));
+                    retain_unstamped_pending(&mut pending_created, &cache);
                     let ready: Vec<(String, usize, String)> = pending_created
                         .iter()
                         .filter(|(_, t)| now.duration_since(**t) >= created_delay)
@@ -1206,18 +1387,10 @@ impl Vault {
                     drop(cache);
 
                     if !ready.is_empty() {
-                        let mut by_file: StdHashMap<String, Vec<usize>> = StdHashMap::new();
-                        for (fp, line, _) in &ready {
-                            by_file.entry(fp.clone()).or_default().push(*line);
-                        }
-                        for (fp, lines) in &by_file {
-                            append_marker_to_lines(
-                                Path::new(fp),
-                                lines,
-                                &crate::taskformat::encode_created(&Some(today_str.clone()), task_format)
-                                    .unwrap_or_default(),
-                            );
-                        }
+                        let entries: Vec<(String, usize)> =
+                            ready.iter().map(|(fp, line, _)| (fp.clone(), *line)).collect();
+                        write_created_markers(&entries, task_format, &today_str);
+
                         let mut cache = tasks_ref.write();
                         for (_, _, id) in &ready {
                             if let Some(t) = cache.get_mut(id) {
@@ -2780,6 +2953,7 @@ mod tests {
             when: WhenValue::Inbox,
             deadline: None,
             tags: Vec::new(),
+            inherited_tags: Vec::new(),
             checklist: Vec::new(),
             completed: false,
             completed_date: None,
@@ -2996,6 +3170,7 @@ mod tests {
             when: WhenValue::Inbox,
             deadline: None,
             tags: Vec::new(),
+            inherited_tags: Vec::new(),
             checklist: Vec::new(),
             completed: false,
             completed_date: None,
@@ -3066,5 +3241,184 @@ mod tests {
                 ("b.md".to_string(), 1),
             ]
         );
+    }
+
+    #[test]
+    fn test_frontmatter_tags_list_and_string_forms() {
+        let list = "---\ntags:\n  - werk\n  - '#project/alpha'\n---\n- [ ] x\n";
+        assert_eq!(Vault::frontmatter_tags(list), vec!["werk".to_string(), "project/alpha".to_string()]);
+
+        let csv = "---\ntags: werk, thuis\n---\n- [ ] x\n";
+        assert_eq!(Vault::frontmatter_tags(csv), vec!["werk".to_string(), "thuis".to_string()]);
+
+        assert!(Vault::frontmatter_tags("- [ ] geen frontmatter\n").is_empty());
+    }
+
+    #[test]
+    fn test_annado_inherit_tags_override() {
+        assert_eq!(Vault::annado_inherit_tags_override("---\nannado_inherit_tags: true\n---\nx"), Some(true));
+        assert_eq!(Vault::annado_inherit_tags_override("---\nannado_inherit_tags: false\n---\nx"), Some(false));
+        assert_eq!(Vault::annado_inherit_tags_override("---\ntags: [a]\n---\nx"), None);
+    }
+
+    #[test]
+    fn test_scan_injects_inherited_tags_with_override_matrix() {
+        let (dir, vault) = make_temp_vault();
+        vault.set_inherit_tags(true);
+
+        // Note with frontmatter tags; one task already carries an overlapping own tag.
+        fs::write(dir.join("Meeting.md"),
+            "---\ntags: [projectx, werk]\n---\n- [ ] alpha\n- [ ] beta #werk\n").unwrap();
+        // Note that opts out despite the global setting.
+        fs::write(dir.join("OptOut.md"),
+            "---\ntags: [uit]\nannado_inherit_tags: false\n---\n- [ ] gamma\n").unwrap();
+
+        let tasks = vault.scan();
+        let alpha = tasks.iter().find(|t| t.title == "alpha").unwrap();
+        assert_eq!(alpha.inherited_tags, vec!["projectx".to_string(), "werk".to_string()]);
+        let beta = tasks.iter().find(|t| t.title == "beta").unwrap();
+        // Own tag wins: the inherited duplicate is dropped (case-insensitive).
+        assert_eq!(beta.inherited_tags, vec!["projectx".to_string()]);
+        let gamma = tasks.iter().find(|t| t.title == "gamma").unwrap();
+        assert!(gamma.inherited_tags.is_empty(), "per-note opt-out must win over the global setting");
+
+        // The task line itself is never touched by inheritance.
+        let content = fs::read_to_string(dir.join("Meeting.md")).unwrap();
+        assert!(content.contains("- [ ] alpha\n"), "line must stay unchanged: {content}");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_scan_backfills_created_for_files_changed_since_last_scan() {
+        let (dir, mut vault) = make_temp_vault();
+        let state = dir.join("scan-state.json");
+        // Simulate a previous run long ago, so the file below counts as "new".
+        // vault_path must match this vault's path, or the state is ignored (see
+        // test_scan_ignores_stale_state_from_a_different_vault below).
+        let payload = serde_json::json!({
+            "last_scan_unix": 1,
+            "vault_path": dir.to_string_lossy(),
+        });
+        fs::write(&state, payload.to_string()).unwrap();
+        vault.set_state_path(state.clone());
+
+        let note = dir.join("Inbox.md");
+        fs::write(&note, "- [ ] Task added by a script\n").unwrap();
+
+        let tasks = vault.scan();
+        let today = Local::now().date_naive().format("%Y-%m-%d").to_string();
+
+        let t = tasks.iter().find(|t| t.title.contains("script")).unwrap();
+        assert_eq!(t.created_date, Some(today.clone()), "in-memory task must be stamped");
+        let content = fs::read_to_string(&note).unwrap();
+        assert!(content.contains(&today), "marker must be written to the file: {content}");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_scan_injects_when_note_opts_in_despite_global_off() {
+        let (dir, vault) = make_temp_vault();
+        // global default = off
+        fs::write(dir.join("OptIn.md"),
+            "---\ntags: [aan]\nannado_inherit_tags: true\n---\n- [ ] delta\n").unwrap();
+        let tasks = vault.scan();
+        let delta = tasks.iter().find(|t| t.title == "delta").unwrap();
+        assert_eq!(delta.inherited_tags, vec!["aan".to_string()]);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_pending_created_drops_ids_stamped_or_gone_elsewhere() {
+        use std::time::Instant;
+
+        // Cache state: one task still unstamped, one already stamped (e.g. by a
+        // scan() back-fill that ran inside the watcher's 2 s stability window).
+        let unstamped = task_at("a.md", 1);
+        let mut stamped = task_at("a.md", 2);
+        stamped.created_date = Some("2026-07-04".to_string());
+
+        let mut cache: HashMap<String, Task> = HashMap::new();
+        cache.insert(unstamped.id.clone(), unstamped.clone());
+        cache.insert(stamped.id.clone(), stamped.clone());
+
+        let now = Instant::now();
+        let mut pending: HashMap<String, Instant> = HashMap::new();
+        pending.insert(unstamped.id.clone(), now);
+        pending.insert(stamped.id.clone(), now);
+        pending.insert("gone".to_string(), now); // task deleted from the cache
+
+        retain_unstamped_pending(&mut pending, &cache);
+
+        assert!(
+            pending.contains_key(&unstamped.id),
+            "unstamped task must stay queued for the flush"
+        );
+        assert!(
+            !pending.contains_key(&stamped.id),
+            "already-stamped task must be dropped so the flush can't double-stamp"
+        );
+        assert!(
+            !pending.contains_key("gone"),
+            "tasks no longer in the cache must be dropped"
+        );
+    }
+
+    #[test]
+    fn test_first_scan_stamps_nothing_but_saves_timestamp() {
+        let (dir, mut vault) = make_temp_vault();
+        let state = dir.join("scan-state.json");
+        vault.set_state_path(state.clone()); // file does not exist yet = first run
+
+        let note = dir.join("Old.md");
+        fs::write(&note, "- [ ] Historic unstamped task\n").unwrap();
+
+        let tasks = vault.scan();
+        let t = tasks.iter().find(|t| t.title.contains("Historic")).unwrap();
+        assert_eq!(t.created_date, None, "first run must never mass-stamp");
+        assert!(fs::read_to_string(&note).unwrap().trim() == "- [ ] Historic unstamped task");
+        assert!(state.exists(), "first run must establish the baseline timestamp");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_scan_ignores_stale_state_from_a_different_vault() {
+        // A single global scan-state.json is shared across vaults. If it was last
+        // written by a DIFFERENT vault (e.g. a fresh clone whose files all have a
+        // checkout-time mtime), reusing its stale timestamp here would treat every
+        // historic unstamped task in THIS vault as "changed since last scan" and
+        // mass-stamp it — exactly what the first-run guard exists to prevent.
+        let (dir, mut vault) = make_temp_vault();
+        let state = dir.join("scan-state.json");
+        let other_vault_path = dir.join("some-other-vault");
+        let payload = serde_json::json!({
+            "last_scan_unix": 1,
+            "vault_path": other_vault_path.to_string_lossy(),
+        });
+        fs::write(&state, payload.to_string()).unwrap();
+        vault.set_state_path(state.clone());
+
+        let note = dir.join("Old.md");
+        fs::write(&note, "- [ ] Historic unstamped task\n").unwrap();
+
+        let tasks = vault.scan();
+        let t = tasks.iter().find(|t| t.title.contains("Historic")).unwrap();
+        assert_eq!(
+            t.created_date, None,
+            "stale state from a different vault must not backfill this vault's historic tasks"
+        );
+
+        let content = fs::read_to_string(&state).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&content).unwrap();
+        assert_eq!(
+            v.get("vault_path").and_then(|p| p.as_str()),
+            Some(dir.to_string_lossy().as_ref()),
+            "state file must be re-keyed to this vault after the scan"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

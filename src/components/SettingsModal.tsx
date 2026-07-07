@@ -6,6 +6,8 @@ import { normalizeTagInput } from '../utils/tags';
 import { filledRowClass, inlineActionButtonClass } from '../utils/styles';
 import { ScheduleBreak, DEFAULT_WORK_SCHEDULE } from '../features/agenda/types';
 import { Toggle } from './Toggle';
+import { SortableList, SortableItem } from './Sortable';
+import { settingsTargets } from '../utils/pathOpener';
 import { KeybindingInput, KEYBINDING_DEFAULTS } from './KeybindingInput';
 import { NotificationSettings } from '../features/notifications/NotificationSettings';
 import { AboutSettings } from './AboutSettings';
@@ -54,7 +56,7 @@ type SettingsTab = 'general' | 'calendar' | 'shortcuts' | 'notifications' | 'abo
 
 
 export function SettingsModal({ isOpen, onClose }: SettingsProps) {
-  const { vaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, calendarEnabled, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault, editorType, editorCustomCommand, setEditorConfig, setShowWelcome } = useTaskStore();
+  const { vaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, calendarEnabled, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault, pathOpeners, openerPrefs, refreshPathOpeners, reorderOpeners, setOpenerHidden, setDefaultOpener, addCustomOpener, removeCustomOpener, inheritFrontmatterTags, setInheritFrontmatterTags, setShowWelcome } = useTaskStore();
   const [localFolderPaths, setLocalFolderPaths] = useState(folderPaths);
   const [isSavingFolderPaths, setIsSavingFolderPaths] = useState(false);
   const [migrateRecurrenceOpen, setMigrateRecurrenceOpen] = useState(false);
@@ -81,6 +83,32 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
   const [calendarPermissionError, setCalendarPermissionError] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [appVersion, setAppVersion] = useState('0.1.0');
+
+  // "Open In" add-custom form drafts. The form stays collapsed behind a button.
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customCommand, setCustomCommand] = useState('');
+  // All valid Open In targets (detected + custom), in configured order, each with its hidden flag.
+  const openerTargets = settingsTargets(pathOpeners, openerPrefs, isObsidianVault);
+  const addCustom = () => {
+    const name = customName.trim();
+    const command = customCommand.trim();
+    if (!name || !command) return;
+    void addCustomOpener({ name, command });
+    setCustomName('');
+    setCustomCommand('');
+  };
+  // dnd-kit gives us (fromId, toId); translate to the reordered id list for the store.
+  const handleOpenerReorder = (fromId: string, toId: string) => {
+    const ids = openerTargets.map((t) => t.id);
+    const from = ids.indexOf(fromId);
+    const to = ids.indexOf(toId);
+    if (from === -1 || to === -1) return;
+    const next = [...ids];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    void reorderOpeners(next);
+  };
 
   // Real version from tauri.conf.json; the fallback covers non-Tauri contexts
   useEffect(() => {
@@ -275,45 +303,158 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
                     </div>
                   )}
                 </div>
+                <div className="mt-4 flex items-center justify-between">
+                  <div>
+                    <span className="text-[13px] text-[#1A1A1A] dark:text-[#E0E0E0]">Inherit tags from notes</span>
+                    <p className="text-[11px] text-[#B0B0B0] dark:text-[#555] mt-0.5">Show a note's frontmatter tags on its tasks (never written to the task line). Override per note with the annado_inherit_tags property (true/false).</p>
+                  </div>
+                  <Toggle checked={inheritFrontmatterTags} onChange={setInheritFrontmatterTags} />
+                </div>
               </div>
 
-              {/* External Editor Section — only shown when not an Obsidian vault */}
-              {!isObsidianVault && (
-                <div>
-                  <h3 className="text-[10px] font-semibold text-[#B0B0B0] dark:text-[#555] uppercase tracking-wider mb-3">
-                    External Editor
+              {/* Open In Section — always shown; configures the open-in icon/menu targets. */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[10px] font-semibold text-[#B0B0B0] dark:text-[#555] uppercase tracking-wider">
+                    Open In
                   </h3>
-                  <div className="flex items-center bg-[#F5F5F5] dark:bg-[#333] rounded-full p-[3px] mb-3">
-                    {(['system', 'vscode', 'sublime', 'custom'] as const).map((type) => (
-                      <button
-                        key={type}
-                        onClick={() => setEditorConfig(type, editorCustomCommand)}
-                        className={`flex-1 py-1 text-[12px] font-medium rounded-full transition-all ${
-                          editorType === type
-                            ? 'bg-white dark:bg-[#4A4A4A] text-[#1A1A1A] dark:text-[#E8E8E8] shadow-sm'
-                            : 'text-[#999] dark:text-[#777] hover:text-[#666] dark:hover:text-[#AAA]'
-                        }`}
-                      >
-                        {{ system: 'System', vscode: 'VS Code', sublime: 'Sublime', custom: 'Custom' }[type]}
-                      </button>
+                  <button
+                    type="button"
+                    onClick={() => void refreshPathOpeners()}
+                    className={inlineActionButtonClass}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <p className="text-[11px] text-[#B0B0B0] dark:text-[#555] mb-3">
+                  Choose which apps the open-in button offers and in what order. Drag to reorder; the
+                  first visible target is the default action, and right-clicking the open-in icon
+                  lets you pick any of the other visible apps. Obsidian appears here when the vault
+                  is an Obsidian vault.
+                </p>
+                <div className="flex items-center gap-2 mb-3">
+                  <label className="text-[12px] text-[#666] dark:text-[#999] flex-shrink-0">Default</label>
+                  <select
+                    value={openerPrefs.defaultId ?? ''}
+                    onChange={(e) => void setDefaultOpener(e.target.value || null)}
+                    className="flex-1 px-2 py-1 text-[12px] rounded border border-[#E8E8E8] dark:border-[#3A3A3A] bg-white dark:bg-[#333] text-[#1A1A1A] dark:text-[#E0E0E0] focus:outline-none cursor-pointer"
+                  >
+                    <option value="">Automatic (first in list)</option>
+                    {openerTargets.filter((t) => !t.hidden).map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
-                  </div>
-                  {editorType === 'custom' && (
-                    <div>
+                  </select>
+                </div>
+                {openerTargets.length === 0 ? (
+                  <p className="text-[12px] text-[#B0B0B0] dark:text-[#555]">
+                    No openers detected. Add a custom one below.
+                  </p>
+                ) : (
+                  <SortableList ids={openerTargets.map((t) => t.id)} onReorder={handleOpenerReorder}>
+                    <div className="space-y-1.5" data-testid="opener-target-list">
+                      {openerTargets.map((target) => (
+                        <SortableItem key={target.id} id={target.id}>
+                          {({ handleProps }) => (
+                            <div className={`flex items-center gap-2.5 ${filledRowClass}`}>
+                              <span
+                                {...handleProps}
+                                aria-label={`Drag ${target.name}`}
+                                className="cursor-grab text-[#C0C0C0] dark:text-[#555] hover:text-[#999] select-none touch-none"
+                              >
+                                ⠿
+                              </span>
+                              <span className="flex-1 min-w-0 truncate text-[13px] text-[#1A1A1A] dark:text-[#E0E0E0]">
+                                {target.name}
+                                {target.custom && (
+                                  <span className="ml-2 text-[10px] uppercase tracking-wide text-[#B0B0B0] dark:text-[#666]">
+                                    custom
+                                  </span>
+                                )}
+                              </span>
+                              {target.custom && (
+                                <button
+                                  type="button"
+                                  onClick={() => void removeCustomOpener(target.id)}
+                                  aria-label={`Remove ${target.name}`}
+                                  className="text-[12px] text-[#C0C0C0] dark:text-[#555] hover:text-red-500 transition-colors"
+                                >
+                                  Remove
+                                </button>
+                              )}
+                              <Toggle
+                                checked={!target.hidden}
+                                onChange={(visible) => void setOpenerHidden(target.id, !visible)}
+                                title={target.hidden ? 'Hidden — click to show' : 'Visible — click to hide'}
+                              />
+                            </div>
+                          )}
+                        </SortableItem>
+                      ))}
+                    </div>
+                  </SortableList>
+                )}
+
+                {/* Add custom opener — collapsed behind a button; the form itself
+                    only appears on demand so the section stays quiet. */}
+                <div className="mt-3" data-testid="add-custom-opener">
+                  {!showCustomForm ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomForm(true)}
+                      className={inlineActionButtonClass}
+                    >
+                      Add custom app…
+                    </button>
+                  ) : (
+                    <div className={`space-y-2 ${filledRowClass}`}>
                       <input
                         type="text"
-                        value={editorCustomCommand}
-                        onChange={e => setEditorConfig('custom', e.target.value)}
-                        placeholder="e.g. code --goto {file}:{line}"
-                        className="w-full px-3 py-2 text-[13px] rounded-lg border border-[#E0E0E0] dark:border-[#3A3A3A] bg-white dark:bg-[#2A2A2A] text-[#1A1A1A] dark:text-[#E0E0E0] focus:outline-none focus:border-primary"
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        placeholder="Name (e.g. VS Code)"
+                        aria-label="Custom opener name"
+                        autoFocus
+                        className="w-full px-2 py-1 text-[12px] rounded border border-[#E8E8E8] dark:border-[#3A3A3A] bg-white dark:bg-[#333] text-[#1A1A1A] dark:text-[#E0E0E0] focus:outline-none focus:border-primary"
                       />
-                      <p className="text-[11px] text-[#B0B0B0] dark:text-[#555] mt-1">
-                        Use <code className="bg-[#F0F0F0] dark:bg-[#333] px-1 rounded">{'{file}'}</code> for the absolute path and <code className="bg-[#F0F0F0] dark:bg-[#333] px-1 rounded">{'{line}'}</code> for the line number.
+                      <input
+                        type="text"
+                        value={customCommand}
+                        onChange={(e) => setCustomCommand(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { addCustom(); setShowCustomForm(false); }
+                          if (e.key === 'Escape') setShowCustomForm(false);
+                        }}
+                        placeholder="Command (e.g. code --goto {file}:{line})"
+                        aria-label="Custom opener command"
+                        className="w-full px-2 py-1 text-[12px] rounded border border-[#E8E8E8] dark:border-[#3A3A3A] bg-white dark:bg-[#333] text-[#1A1A1A] dark:text-[#E0E0E0] focus:outline-none focus:border-primary"
+                      />
+                      <p className="text-[11px] text-[#B0B0B0] dark:text-[#555]">
+                        Use <code className="bg-[#F0F0F0] dark:bg-[#333] px-1 rounded">{'{file}'}</code> for the
+                        absolute path, <code className="bg-[#F0F0F0] dark:bg-[#333] px-1 rounded">{'{dir}'}</code> for
+                        its folder, and <code className="bg-[#F0F0F0] dark:bg-[#333] px-1 rounded">{'{line}'}</code> for
+                        the line number.
                       </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { addCustom(); setShowCustomForm(false); }}
+                          disabled={!customName.trim() || !customCommand.trim()}
+                          className={`${inlineActionButtonClass} disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                          Add
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomForm(false)}
+                          className={inlineActionButtonClass}
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
-              )}
+              </div>
 
               {/* Appearance Section */}
               <div>

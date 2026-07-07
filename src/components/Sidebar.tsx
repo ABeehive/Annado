@@ -4,6 +4,7 @@ import { SortableList, SortableItem, type DragHandleProps } from './Sortable';
 import { useTaskStore } from '../stores/taskStore';
 import { ViewType, getWhenType, ProjectInfo, PersonInfo, SmartList } from '../types/task';
 import { ContextMenu } from './ContextMenu';
+import { buildOpenMenuItems } from '../utils/openMenuItems';
 
 // Heavy modals load on first open — keeps the startup bundle small.
 const SettingsModal = lazy(() => import('./SettingsModal').then((m) => ({ default: m.SettingsModal })));
@@ -113,89 +114,9 @@ interface ProjectHierarchy {
   children: ProjectHierarchy[];  // Changed to recursive structure
 }
 
-function MenuItem({ dot, label, onClick }: { dot: string; label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-[#f5f3f0] dark:hover:bg-[#333] transition-colors duration-[0.1s] cursor-pointer"
-    >
-      <span className="rounded-full flex-shrink-0" style={{ backgroundColor: dot, width: 5, height: 5 }} />
-      <span className="text-[13px] flex-1 text-left text-[#1A1A1A] dark:text-[#E0E0E0]">{label}</span>
-    </button>
-  );
-}
-
-function ProjectContextMenu({ project, color, x, y, onColor, onRename, onAddSubproject, onClose }: {
-  project: ProjectInfo; color: string; x: number; y: number;
-  onColor: () => void; onRename: () => void; onAddSubproject: () => void; onClose: () => void;
-}) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<React.CSSProperties>({ top: y, left: x, visibility: 'hidden' });
-
-  useEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const style: React.CSSProperties = {};
-    if (y + el.offsetHeight > window.innerHeight) style.bottom = window.innerHeight - y;
-    else style.top = y;
-    if (x + el.offsetWidth > window.innerWidth) style.right = window.innerWidth - x;
-    else style.left = x;
-    style.visibility = 'visible';
-    setPos(style);
-  }, [x, y]);
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
-      <div ref={menuRef} className="fixed z-50 bg-white dark:bg-[#2A2A2A] min-w-[180px] overflow-hidden"
-        style={{ ...pos, borderRadius: 12, boxShadow: '0 0 0 0.5px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div className="px-3 pt-2.5 pb-1.5 border-b border-[#F0F0F0] dark:border-[#3A3A3A]">
-          <div className="text-[13px] font-semibold text-[#1A1A1A] dark:text-[#E0E0E0] truncate">{project.name}</div>
-        </div>
-        <MenuItem dot={color} label="Color…" onClick={onColor} />
-        <MenuItem dot="#999" label="Rename" onClick={onRename} />
-        <MenuItem dot="#5C6BC0" label="New Subproject" onClick={onAddSubproject} />
-      </div>
-    </>
-  );
-}
-
-function PersonContextMenu({ person, x, y, onRename, onClose }: {
-  person: PersonInfo; x: number; y: number;
-  onRename: () => void; onClose: () => void;
-}) {
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<React.CSSProperties>({ top: y, left: x, visibility: 'hidden' });
-
-  useEffect(() => {
-    const el = menuRef.current;
-    if (!el) return;
-    const style: React.CSSProperties = {};
-    if (y + el.offsetHeight > window.innerHeight) style.bottom = window.innerHeight - y;
-    else style.top = y;
-    if (x + el.offsetWidth > window.innerWidth) style.right = window.innerWidth - x;
-    else style.left = x;
-    style.visibility = 'visible';
-    setPos(style);
-  }, [x, y]);
-
-  return (
-    <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
-      <div ref={menuRef} className="fixed z-50 bg-white dark:bg-[#2A2A2A] min-w-[160px] overflow-hidden"
-        style={{ ...pos, borderRadius: 12, boxShadow: '0 0 0 0.5px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div className="px-3 pt-2.5 pb-1.5 border-b border-[#F0F0F0] dark:border-[#3A3A3A]">
-          <div className="text-[13px] font-semibold text-[#1A1A1A] dark:text-[#E0E0E0] truncate">{person.name}</div>
-        </div>
-        <MenuItem dot="#999" label="Rename" onClick={onRename} />
-      </div>
-    </>
-  );
-}
-
 // Sortable wrapper for project items
 export function Sidebar() {
-  const { currentView, setCurrentView, tasks, selectedProject, setSelectedProject, availableProjects, selectedPerson, setSelectedPerson, availablePeople, selectedTag, setSelectedTag, availableTags, sidebarWidth, setSidebarWidth, expandedFolders, toggleFolder, projectColors, setProjectColor, tagColors, setTagColor, projectOrder, reorderProjects, sidebarCounts, showProjectCounts, smartLists, selectedSmartListId, deleteSmartList, setSelectedSmartList, renameProject, renamePerson } = useTaskStore(useShallow((s) => ({ currentView: s.currentView, setCurrentView: s.setCurrentView, tasks: s.tasks, selectedProject: s.selectedProject, setSelectedProject: s.setSelectedProject, availableProjects: s.availableProjects, selectedPerson: s.selectedPerson, setSelectedPerson: s.setSelectedPerson, availablePeople: s.availablePeople, selectedTag: s.selectedTag, setSelectedTag: s.setSelectedTag, availableTags: s.availableTags, sidebarWidth: s.sidebarWidth, setSidebarWidth: s.setSidebarWidth, expandedFolders: s.expandedFolders, toggleFolder: s.toggleFolder, projectColors: s.projectColors, setProjectColor: s.setProjectColor, tagColors: s.tagColors, setTagColor: s.setTagColor, projectOrder: s.projectOrder, reorderProjects: s.reorderProjects, sidebarCounts: s.sidebarCounts, showProjectCounts: s.showProjectCounts, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId, deleteSmartList: s.deleteSmartList, setSelectedSmartList: s.setSelectedSmartList, renameProject: s.renameProject, renamePerson: s.renamePerson, })));
+  const { currentView, setCurrentView, tasks, selectedProject, setSelectedProject, availableProjects, selectedPerson, setSelectedPerson, availablePeople, selectedTag, setSelectedTag, availableTags, sidebarWidth, setSidebarWidth, expandedFolders, toggleFolder, projectColors, setProjectColor, tagColors, setTagColor, projectOrder, reorderProjects, sidebarCounts, showProjectCounts, smartLists, selectedSmartListId, deleteSmartList, setSelectedSmartList, renameProject, renamePerson, pathOpeners, openerPrefs, isObsidianVault } = useTaskStore(useShallow((s) => ({ currentView: s.currentView, setCurrentView: s.setCurrentView, tasks: s.tasks, selectedProject: s.selectedProject, setSelectedProject: s.setSelectedProject, availableProjects: s.availableProjects, selectedPerson: s.selectedPerson, setSelectedPerson: s.setSelectedPerson, availablePeople: s.availablePeople, selectedTag: s.selectedTag, setSelectedTag: s.setSelectedTag, availableTags: s.availableTags, sidebarWidth: s.sidebarWidth, setSidebarWidth: s.setSidebarWidth, expandedFolders: s.expandedFolders, toggleFolder: s.toggleFolder, projectColors: s.projectColors, setProjectColor: s.setProjectColor, tagColors: s.tagColors, setTagColor: s.setTagColor, projectOrder: s.projectOrder, reorderProjects: s.reorderProjects, sidebarCounts: s.sidebarCounts, showProjectCounts: s.showProjectCounts, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId, deleteSmartList: s.deleteSmartList, setSelectedSmartList: s.setSelectedSmartList, renameProject: s.renameProject, renamePerson: s.renamePerson, pathOpeners: s.pathOpeners, openerPrefs: s.openerPrefs, isObsidianVault: s.isObsidianVault, })));
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [colorPickerProject, setColorPickerProject] = useState<string | null>(null);
   const [colorPickerTag, setColorPickerTag] = useState<string | null>(null);
@@ -511,7 +432,7 @@ export function Sidebar() {
 
     return (
       <li key={project.path} className="relative">
-        <div className="flex items-center" {...handleProps}>
+        <div className="flex items-center group" {...handleProps}>
           {hasChildren ? (
             <button
               onClick={() => toggleFolder(project.name)}
@@ -660,11 +581,11 @@ export function Sidebar() {
                   const count = getPersonCount(person.name);
                   const isActive = selectedPerson === person.name;
                   return (
-                    <li key={person.path}>
+                    <li key={person.path} className="group flex items-center">
                       <button
                         onClick={() => { if (renamingPerson !== person.name) handlePersonClick(person.name); }}
                         onContextMenu={(e) => { e.preventDefault(); setPersonContextMenu({ x: e.clientX, y: e.clientY, person }); }}
-                        className={`${rowClass(isActive)} justify-between`}
+                        className={`${rowClass(isActive)} justify-between flex-1`}
                       >
                         <span className="flex items-center gap-3 min-w-0 flex-1">
                           {personIcon(isActive)}
@@ -861,23 +782,17 @@ export function Sidebar() {
       )}
 
       {projectContextMenu && (
-        <ProjectContextMenu
-          project={projectContextMenu.project}
-          color={getColor(projectContextMenu.project.name, projectContextMenu.project.parentFolder)}
+        <ContextMenu
           x={projectContextMenu.x}
           y={projectContextMenu.y}
-          onColor={() => {
-            setColorPickerProject(projectContextMenu.project.name);
-            setProjectContextMenu(null);
-          }}
-          onRename={() => {
-            setRenamingProject(projectContextMenu.project.name);
-            setProjectContextMenu(null);
-          }}
-          onAddSubproject={() => {
-            setCreateProjectParent(projectContextMenu.project.name);
-            setProjectContextMenu(null);
-          }}
+          header={projectContextMenu.project.name}
+          items={[
+            { dot: getColor(projectContextMenu.project.name, projectContextMenu.project.parentFolder), label: 'Color\u2026', onClick: () => setColorPickerProject(projectContextMenu.project.name) },
+            { dot: '#999', label: 'Rename', onClick: () => setRenamingProject(projectContextMenu.project.name) },
+            { dot: '#5C6BC0', label: 'New Subproject', onClick: () => setCreateProjectParent(projectContextMenu.project.name) },
+            { separator: true },
+            ...buildOpenMenuItems(projectContextMenu.project.path, pathOpeners, openerPrefs, isObsidianVault),
+          ]}
           onClose={() => setProjectContextMenu(null)}
         />
       )}
@@ -890,14 +805,15 @@ export function Sidebar() {
       )}
 
       {personContextMenu && (
-        <PersonContextMenu
-          person={personContextMenu.person}
+        <ContextMenu
           x={personContextMenu.x}
           y={personContextMenu.y}
-          onRename={() => {
-            setRenamingPerson(personContextMenu.person.name);
-            setPersonContextMenu(null);
-          }}
+          header={personContextMenu.person.name}
+          items={[
+            { dot: '#999', label: 'Rename', onClick: () => setRenamingPerson(personContextMenu.person.name) },
+            { separator: true },
+            ...buildOpenMenuItems(personContextMenu.person.path, pathOpeners, openerPrefs, isObsidianVault),
+          ]}
           onClose={() => setPersonContextMenu(null)}
         />
       )}

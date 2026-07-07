@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { useTaskStore } from '../stores/taskStore';
 import { ChecklistItemRow } from './ChecklistItemRow';
 import { WhenType, createWhenValue, getWhenType } from '../types/task';
-import { openInEditor, editorLabel } from '../utils/openInEditor';
+import { OpenFileButton } from './OpenFileButton';
 
 export function TaskDetail() {
-  const { getSelectedTask, updateTask, selectTask, availableProjects, selectedTaskIds, vaultPath, isObsidianVault, editorType, editorCustomCommand } = useTaskStore();
+  const { getSelectedTask, updateTask, selectTask, availableProjects, selectedTaskIds, vaultPath } = useTaskStore();
   const task = getSelectedTask();
 
   const [title, setTitle] = useState('');
@@ -82,14 +82,17 @@ export function TaskDetail() {
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-12 pb-3">
         <h3 className="text-[13px] font-semibold text-[#1A1A1A] dark:text-[#E0E0E0]">Details</h3>
-        <button
-          onClick={() => selectTask(null)}
-          className="text-[#A0A0A0] hover:text-[#666] dark:hover:text-[#888] transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          <OpenFileButton path={task.filePath} line={task.lineNumber} />
+          <button
+            onClick={() => selectTask(null)}
+            className="text-[#A0A0A0] hover:text-[#666] dark:hover:text-[#888] transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -144,15 +147,7 @@ export function TaskDetail() {
             const projectInfo = availableProjects.find(p => p.name === projects[0]);
             if (!projectInfo) return null;
             return (
-              <button
-                onClick={() => openInEditor(vaultPath, projectInfo.path, 1, isObsidianVault, editorType, editorCustomCommand)}
-                className="p-1 text-primary hover:text-[#3F51B5] transition-colors"
-                title={editorLabel(isObsidianVault, editorType)}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-              </button>
+              <OpenFileButton path={projectInfo.path} showLabel />
             );
           })()}
         </div>
@@ -198,15 +193,7 @@ export function TaskDetail() {
         {/* Metadata */}
         <div className="pt-3 mt-auto border-t border-[#E8E8E8] dark:border-[#2A2A2A] space-y-2">
           {vaultPath && (
-            <button
-              onClick={() => openInEditor(vaultPath, task.filePath, task.lineNumber, isObsidianVault, editorType, editorCustomCommand)}
-              className="flex items-center gap-1.5 text-[11px] text-primary hover:text-[#3F51B5] transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
-              {editorLabel(isObsidianVault, editorType)}
-            </button>
+            <OpenFileButton path={task.filePath} line={task.lineNumber} showLabel />
           )}
         </div>
       </div>

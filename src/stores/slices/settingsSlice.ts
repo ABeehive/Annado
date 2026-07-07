@@ -3,7 +3,17 @@ import type { SliceCreator, RootState } from './types';
 import { persist, storeError } from '../storeUtils';
 import { KEYBINDING_DEFAULTS } from '../../utils/keybindings';
 import { normalizeTagInput } from '../../utils/tags';
-import type { FolderPaths, EditorType, Task, SmartList, TaskFormat, TaskFormatDetection } from '../../types/task';
+import {
+  detectOpeners,
+  refreshOpeners,
+  getOpenerPrefs,
+  setOpenerPrefs,
+  EMPTY_OPENER_PREFS,
+  OBSIDIAN_APP_ID,
+  type PathOpenerInfo,
+  type OpenerPrefs,
+} from '../../utils/pathOpener';
+import type { FolderPaths, Task, SmartList, TaskFormat, TaskFormatDetection } from '../../types/task';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -99,9 +109,11 @@ async function loadVault(
     get().fetchFolderPaths();
     get().fetchExcludedPaths();
     get().fetchIsObsidianVault();
-    get().fetchEditorConfig();
+    get().loadPathOpeners();
+    get().loadOpenerPrefs();
     get().fetchTaskFormat();
     get().fetchTaskMarker();
+    get().fetchInheritFrontmatterTags();
     get().fetchRecurringTemplateCount();
   } catch (error) {
     storeError(set, error, { isLoading: false });
@@ -113,11 +125,14 @@ export interface SettingsSlice {
   isLoading: boolean;
   error: string | null;
   isObsidianVault: boolean;
-  editorType: EditorType;
-  editorCustomCommand: string;
+  /** Apps detected on this machine that can open files/dirs (for "Open with…" menus). */
+  pathOpeners: PathOpenerInfo[];
+  /** "Open In" preferences: per-target order/visibility + custom openers (backend config). */
+  openerPrefs: OpenerPrefs;
   taskFormat: string; // '' = unset (show first-run picker)
   needsFormatPicker: boolean; // true once we've loaded an unset task_format → open first-run picker
   taskMarkerTag: string; // '' = import every checkbox; e.g. 'task' = only #task checkboxes
+  inheritFrontmatterTags: boolean; // show a note's frontmatter tags on its tasks (never written to the task line)
   recurringTemplateCount: number; // legacy templates detected in the vault (gates the migration UI)
   folderPaths: FolderPaths;
   excludedPaths: string[];
@@ -141,14 +156,22 @@ export interface SettingsSlice {
   setFolderPaths: (folderPaths: FolderPaths) => Promise<void>;
   fetchIsObsidianVault: () => Promise<void>;
   setIsObsidianVault: (value: boolean) => Promise<void>;
-  fetchEditorConfig: () => Promise<void>;
-  setEditorConfig: (editorType: EditorType, customCommand: string) => Promise<void>;
+  loadPathOpeners: () => Promise<void>;
+  refreshPathOpeners: () => Promise<void>;
+  loadOpenerPrefs: () => Promise<void>;
+  reorderOpeners: (ids: string[]) => Promise<void>;
+  setOpenerHidden: (id: string, hidden: boolean) => Promise<void>;
+  setDefaultOpener: (id: string | null) => Promise<void>;
+  addCustomOpener: (opener: { name: string; command: string }) => Promise<void>;
+  removeCustomOpener: (id: string) => Promise<void>;
   fetchTaskFormat: () => Promise<void>;
   setTaskFormat: (taskFormat: TaskFormat) => Promise<void>;
   detectTaskFormat: () => Promise<TaskFormatDetection>;
   dismissFormatPicker: () => void;
   fetchTaskMarker: () => Promise<void>;
   setTaskMarker: (marker: string) => Promise<void>;
+  fetchInheritFrontmatterTags: () => Promise<void>;
+  setInheritFrontmatterTags: (enabled: boolean) => Promise<void>;
   fetchRecurringTemplateCount: () => Promise<void>;
   fetchExcludedPaths: () => Promise<void>;
   addExcludedPath: (path: string) => Promise<void>;
@@ -165,11 +188,12 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
   isLoading: false,
   error: null,
   isObsidianVault: false,
-  editorType: 'system' as EditorType,
-  editorCustomCommand: '',
+  pathOpeners: [],
+  openerPrefs: EMPTY_OPENER_PREFS,
   taskFormat: '',
   needsFormatPicker: false,
   taskMarkerTag: '',
+  inheritFrontmatterTags: false,
   recurringTemplateCount: 0,
   folderPaths: DEFAULT_FOLDER_PATHS,
   excludedPaths: [],
@@ -218,22 +242,115 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
     try {
       await invoke('set_is_obsidian_vault', { value });
       set({ isObsidianVault: value });
+      // Toggling Obsidian on makes Obsidian the default opener; toggling it off
+      // clears that default (Obsidian is no longer a valid target).
+      const prefs = get().openerPrefs;
+      if (value && prefs.defaultId !== OBSIDIAN_APP_ID) {
+        const openerPrefs = { ...prefs, defaultId: OBSIDIAN_APP_ID };
+        set({ openerPrefs });
+        await setOpenerPrefs(openerPrefs);
+      } else if (!value && prefs.defaultId === OBSIDIAN_APP_ID) {
+        const openerPrefs = { ...prefs, defaultId: null };
+        set({ openerPrefs });
+        await setOpenerPrefs(openerPrefs);
+      }
     } catch (error) {
       storeError(set, error);
     }
   },
 
-  fetchEditorConfig: async () =>
-    guardedFetch(
-      set,
-      () => invoke<{ editorType: string; editorCustomCommand: string }>('get_editor_config'),
-      (config) => set({ editorType: config.editorType as EditorType, editorCustomCommand: config.editorCustomCommand }),
-    ),
-
-  setEditorConfig: async (editorType: EditorType, customCommand: string) => {
+  loadPathOpeners: async () => {
     try {
-      await invoke('set_editor_config', { editorType, editorCustomCommand: customCommand });
-      set({ editorType, editorCustomCommand: customCommand });
+      const pathOpeners = await detectOpeners();
+      set({ pathOpeners });
+    } catch (error) {
+      console.error('Failed to detect path openers:', error);
+    }
+  },
+
+  refreshPathOpeners: async () => {
+    try {
+      const pathOpeners = await refreshOpeners();
+      set({ pathOpeners });
+    } catch (error) {
+      storeError(set, error);
+    }
+  },
+
+  loadOpenerPrefs: async () => {
+    try {
+      const openerPrefs = await getOpenerPrefs();
+      set({ openerPrefs });
+    } catch (error) {
+      console.error('Failed to load opener prefs:', error);
+    }
+  },
+
+  // All "Open In" setters mutate local state optimistically, then persist to the
+  // backend config. On a persist failure we surface the error but keep the
+  // optimistic state (next load reconciles).
+  reorderOpeners: async (ids: string[]) => {
+    const openerPrefs = { ...get().openerPrefs, order: ids };
+    set({ openerPrefs });
+    try {
+      await setOpenerPrefs(openerPrefs);
+    } catch (error) {
+      storeError(set, error);
+    }
+  },
+
+  setOpenerHidden: async (id: string, hidden: boolean) => {
+    const current = get().openerPrefs;
+    const nextHidden = hidden
+      ? (current.hidden.includes(id) ? current.hidden : [...current.hidden, id])
+      : current.hidden.filter((h) => h !== id);
+    const openerPrefs = { ...current, hidden: nextHidden };
+    set({ openerPrefs });
+    try {
+      await setOpenerPrefs(openerPrefs);
+    } catch (error) {
+      storeError(set, error);
+    }
+  },
+
+  setDefaultOpener: async (id: string | null) => {
+    const openerPrefs = { ...get().openerPrefs, defaultId: id };
+    set({ openerPrefs });
+    try {
+      await setOpenerPrefs(openerPrefs);
+    } catch (error) {
+      storeError(set, error);
+    }
+  },
+
+  addCustomOpener: async ({ name, command }: { name: string; command: string }) => {
+    const current = get().openerPrefs;
+    const id = `custom-${crypto.randomUUID()}`;
+    const openerPrefs = {
+      ...current,
+      custom: [...current.custom, { id, name, command }],
+      // New custom openers lead the list so they're easy to find / immediately default.
+      order: [id, ...current.order],
+    };
+    set({ openerPrefs });
+    try {
+      await setOpenerPrefs(openerPrefs);
+    } catch (error) {
+      storeError(set, error);
+    }
+  },
+
+  removeCustomOpener: async (id: string) => {
+    const current = get().openerPrefs;
+    const openerPrefs = {
+      ...current,
+      custom: current.custom.filter((c) => c.id !== id),
+      order: current.order.filter((o) => o !== id),
+      hidden: current.hidden.filter((h) => h !== id),
+    };
+    set({ openerPrefs });
+    try {
+      await setOpenerPrefs(openerPrefs);
     } catch (error) {
       storeError(set, error);
     }
@@ -271,6 +388,19 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
       get().fetchTags();
       get().fetchProjects();
       get().fetchPeople();
+    } catch (error) {
+      storeError(set, error);
+    }
+  },
+
+  fetchInheritFrontmatterTags: async () =>
+    guardedFetch(set, () => invoke<boolean>('get_inherit_frontmatter_tags'), (inheritFrontmatterTags) => set({ inheritFrontmatterTags })),
+
+  setInheritFrontmatterTags: async (enabled: boolean) => {
+    try {
+      const tasks = await invoke<Task[]>('set_inherit_frontmatter_tags', { enabled });
+      set({ inheritFrontmatterTags: enabled, tasks });
+      get().fetchTags(); // inherited tags join the sidebar tag list/counts
     } catch (error) {
       storeError(set, error);
     }
