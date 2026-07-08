@@ -5,7 +5,7 @@ import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { arrayMove } from '@dnd-kit/sortable';
 import { SortableList, SortableItem } from './Sortable';
 import { useTaskStore } from '../stores/taskStore';
-import { getTaskDate, limitGroupedTasks, groupTasksByCompletionDate, groupTasksByProject } from '../utils/taskGrouping';
+import { getTaskDate, limitGroupedTasks, groupTasksByCompletionDate, groupTasksByProject, buildGroupedRows, type TaskRow } from '../utils/taskGrouping';
 import { usePanelState, usePanelTaskState } from '../hooks/usePanelState';
 import { WikilinkNamesProvider } from '../contexts/WikilinkNamesContext';
 import { usePanelId } from '../contexts/PanelContext';
@@ -214,12 +214,8 @@ function DraggableTaskItem({ task, showProject }: { task: Task; showProject: boo
   );
 }
 
-// Flattened row model for the virtualized list. Project/evening headers and task
-// rows live in a single array so the whole grouped/flat list can be windowed.
-type TaskRow =
-  | { kind: 'task'; key: string; task: Task; showProject: boolean }
-  | { kind: 'projectHeader'; key: string; name: string; color?: string; path?: string }
-  | { kind: 'eveningHeader'; key: string };
+// TaskRow (the flattened virtualizer row model) and buildGroupedRows live in
+// ../utils/taskGrouping so the grouped-row flattening is pure and unit-testable.
 
 /**
  * Windowed task list: only the rows near the viewport are mounted. Heights are
@@ -256,7 +252,13 @@ function VirtualTaskList({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollElement,
-    estimateSize: () => 44,
+    // Kind-aware first guess so unmeasured rows land close to their real height
+    // (project headers are ~68px, tag/2-line tasks taller than a bare 44) — measureElement
+    // still corrects to the exact height, but smaller corrections mean less scroll jank.
+    estimateSize: (index) => {
+      const kind = rows[index].kind;
+      return kind === 'projectHeader' ? 68 : kind === 'eveningHeader' ? 44 : 52;
+    },
     overscan: 10,
     getItemKey: (index) => rows[index].key,
     scrollMargin,
@@ -1052,34 +1054,17 @@ export function TaskList({ onOpenRecurringModal }: TaskListProps) {
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const setScrollNode = useCallback((node: HTMLDivElement | null) => setScrollEl(node), []);
 
-  // Flatten the grouped-by-project view (headers + tasks + evening section) into
-  // a single row array for virtualization.
-  const groupedRows = useMemo<TaskRow[]>(() => {
-    if (!groupedTasks) return [];
-    const out: TaskRow[] = [];
-    for (const task of groupedTasks.noProject) {
-      out.push({ kind: 'task', key: task.id, task, showProject: true });
-    }
-    for (const { project, tasks: projectTasks } of groupedTasks.projects) {
-      const projectInfo = availableProjects.find((p) => p.name === project);
-      const color = getProjectColor(project, projectInfo?.parentFolder, projectColors);
-      out.push({ kind: 'projectHeader', key: `header:${project}`, name: project, color, path: projectInfo?.path });
-      for (const task of projectTasks) out.push({ kind: 'task', key: task.id, task, showProject: false });
-    }
-    if (eveningGrouped) {
-      out.push({ kind: 'eveningHeader', key: 'evening-header' });
-      for (const task of eveningGrouped.noProject) {
-        out.push({ kind: 'task', key: task.id, task, showProject: true });
-      }
-      for (const { project, tasks: projectTasks } of eveningGrouped.projects) {
+  // Flatten the grouped-by-project view (headers + tasks + evening section) into a
+  // single row array for virtualization. Keys are made unique per section by
+  // buildGroupedRows so a multi-project task can't collide in react-virtual's cache.
+  const groupedRows = useMemo<TaskRow[]>(
+    () =>
+      buildGroupedRows(groupedTasks, eveningGrouped, (project) => {
         const projectInfo = availableProjects.find((p) => p.name === project);
-        const color = getProjectColor(project, projectInfo?.parentFolder, projectColors);
-        out.push({ kind: 'projectHeader', key: `evening-header:${project}`, name: project, color, path: projectInfo?.path });
-        for (const task of projectTasks) out.push({ kind: 'task', key: task.id, task, showProject: false });
-      }
-    }
-    return out;
-  }, [groupedTasks, eveningGrouped, availableProjects, projectColors]);
+        return { color: getProjectColor(project, projectInfo?.parentFolder, projectColors), path: projectInfo?.path };
+      }),
+    [groupedTasks, eveningGrouped, availableProjects, projectColors],
+  );
 
   // Flat task list (project view, person/tag view). showProject mirrors the
   // original branches: hidden inside a project, shown otherwise.

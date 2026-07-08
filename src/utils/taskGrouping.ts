@@ -115,3 +115,59 @@ export function groupTasksByProject(tasks: Task[]): {
 
   return { noProject, projects };
 }
+
+export type GroupedByProject = {
+  noProject: Task[];
+  projects: { project: string; tasks: Task[] }[];
+};
+
+// Flattened row model for the virtualized list. Project/evening headers and task
+// rows live in a single array so the whole grouped/flat list can be windowed.
+export type TaskRow =
+  | { kind: 'task'; key: string; task: Task; showProject: boolean }
+  | { kind: 'projectHeader'; key: string; name: string; color?: string; path?: string }
+  | { kind: 'eveningHeader'; key: string };
+
+// Flatten one grouped-by-project section into virtualizer rows. `keyPrefix` scopes the
+// task keys so a task that appears in several projects (or in both the day and evening
+// sections) never produces duplicate keys — react-virtual's per-key size cache needs
+// unique keys, and duplicates make rows overlap.
+function flattenSection(
+  grouped: GroupedByProject,
+  opts: {
+    keyPrefix: string;
+    headerKeyPrefix: string;
+    resolve: (project: string) => { color?: string; path?: string };
+  },
+): TaskRow[] {
+  const { keyPrefix, headerKeyPrefix, resolve } = opts;
+  const out: TaskRow[] = [];
+  for (const task of grouped.noProject) {
+    out.push({ kind: 'task', key: `${keyPrefix}noproj:${task.id}`, task, showProject: true });
+  }
+  for (const { project, tasks } of grouped.projects) {
+    const { color, path } = resolve(project);
+    out.push({ kind: 'projectHeader', key: `${headerKeyPrefix}${project}`, name: project, color, path });
+    for (const task of tasks) {
+      out.push({ kind: 'task', key: `${keyPrefix}proj:${project}:${task.id}`, task, showProject: false });
+    }
+  }
+  return out;
+}
+
+// Build the full grouped row list (day section + optional evening section) for the
+// virtualized task list, with globally-unique row keys. `resolve` supplies each
+// project's color/path (kept out of here so this stays a pure, testable function).
+export function buildGroupedRows(
+  day: GroupedByProject | null,
+  evening: GroupedByProject | null,
+  resolve: (project: string) => { color?: string; path?: string },
+): TaskRow[] {
+  if (!day) return [];
+  const rows = flattenSection(day, { keyPrefix: '', headerKeyPrefix: 'header:', resolve });
+  if (evening) {
+    rows.push({ kind: 'eveningHeader', key: 'evening-header' });
+    rows.push(...flattenSection(evening, { keyPrefix: 'evening-', headerKeyPrefix: 'evening-header:', resolve }));
+  }
+  return rows;
+}

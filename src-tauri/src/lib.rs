@@ -8,7 +8,7 @@ mod taskformat;
 mod vault;
 
 use commands::{
-    create_task, create_vault, get_all_persons, get_all_projects, get_all_tags, get_person_metadata, get_task,
+    create_task, append_daily_note_line, create_vault, get_all_persons, get_all_projects, get_all_tags, get_person_metadata, get_task,
     get_tasks, get_vault_path, rescan_vault, set_vault_path, toggle_task_complete,
     toggle_checklist_item, rename_checklist_item, delete_checklist_item, update_project_metadata, update_task,
     migrate_recurrence_dry_run, migrate_recurrence_apply, get_recurring_template_count,
@@ -338,6 +338,7 @@ pub fn run() {
             get_task,
             update_task,
             create_task,
+            append_daily_note_line,
             toggle_task_complete,
             toggle_checklist_item,
             rename_checklist_item,

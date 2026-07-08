@@ -82,6 +82,24 @@ export function filterTasks(
 }
 
 /**
+ * Count the tasks a sidebar view shows in its badge. Standard views delegate to
+ * `filterTasks` so the badge can never drift from the list; only views that
+ * `filterTasks` doesn't compute (recurring templates, the unbadged Review) are
+ * handled here.
+ */
+export function getViewCount(tasks: Task[], view: ViewType): number {
+  if (view === 'recurring') {
+    return tasks.filter((t) => t.recurrence && !t.completed).length;
+  }
+  // `filterTasks` has no 'review' case (its default would count everything) and the
+  // Review view carries no badge — keep it explicitly unbadged.
+  if (view === 'review') return 0;
+  // Single source of truth: the badge counts exactly what the list shows, so the
+  // two can never drift (e.g. the Today deadline rule stays in lockstep).
+  return filterTasks(tasks, view, null, null, null).length;
+}
+
+/**
  * Run a task filter while keeping just-completed ("lingering") tasks visible.
  * Lingering tasks are masked as uncompleted so they pass view filters, then the
  * real task objects are substituted back so the UI shows the checked state.

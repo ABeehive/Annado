@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { SortableList, SortableItem, type DragHandleProps } from './Sortable';
 import { useTaskStore } from '../stores/taskStore';
-import { ViewType, getWhenType, ProjectInfo, PersonInfo, SmartList } from '../types/task';
+import { ViewType, ProjectInfo, PersonInfo, SmartList } from '../types/task';
 import { ContextMenu } from './ContextMenu';
 import { buildOpenMenuItems } from '../utils/openMenuItems';
 
@@ -16,7 +16,7 @@ import { sameTag } from '../utils/tags';
 import { buildTagTree, type TagNode } from '../utils/tagTree';
 import { getViewIcon, PersonIcon } from '../utils/viewIcons';
 import { useClickOutside } from '../hooks/useClickOutside';
-import { isDateTodayOrEarlier, isDateUpcoming } from '../utils/dates';
+import { getViewCount } from '../stores/filterTasks';
 import { AgendaDaySelector } from '../features/agenda/AgendaDaySelector';
 
 const chevronIcon = (expanded: boolean) => (
@@ -248,46 +248,9 @@ export function Sidebar() {
     return names;
   }, [projectHierarchy]);
 
-  const getCount = (view: ViewType): number => {
-    if (view === 'recurring') {
-      return tasks.filter((t) => t.recurrence && !t.completed).length;
-    }
-    if (view === 'wrapped' || view === 'agenda') {
-      return 0;
-    }
-
-    return tasks.filter((task) => {
-      if (task.completed) return view === 'logbook';
-      if (view === 'logbook') return false;
-
-      const whenType = getWhenType(task.when);
-      switch (view) {
-        case 'inbox':
-          return whenType === 'inbox' && task.projects.length === 0;
-        case 'today':
-          // Include overdue tasks (date <= today)
-          if (whenType === 'today' || whenType === 'evening') return true;
-          if (whenType === 'date' && typeof task.when === 'object' && 'date' in task.when) {
-            return isDateTodayOrEarlier(task.when.date);
-          }
-          return false;
-        case 'upcoming':
-          if (whenType === 'tomorrow') return true;
-          if (whenType === 'date' && typeof task.when === 'object' && 'date' in task.when) {
-            return isDateUpcoming(task.when.date);
-          }
-          // Also include tasks with a future deadline (even without a 'when' date)
-          if (task.deadline && isDateUpcoming(task.deadline)) return true;
-          return false;
-        case 'anytime':
-          return whenType === 'anytime';
-        case 'someday':
-          return whenType === 'someday';
-        default:
-          return false;
-      }
-    }).length;
-  };
+  // Badge counts delegate to the same filter the lists use (see getViewCount), so a
+  // badge can never drift from its view — e.g. Today's deadline rule stays in sync.
+  const getCount = (view: ViewType): number => getViewCount(tasks, view);
 
   const getProjectCount = (project: string): number => {
     return tasks.filter((t) => t.projects.includes(project) && !t.completed).length;

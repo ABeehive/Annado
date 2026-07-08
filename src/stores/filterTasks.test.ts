@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { filterTasks, filterTasksForSmartList, withCompletionLinger } from './filterTasks';
+import { filterTasks, filterTasksForSmartList, withCompletionLinger, getViewCount } from './filterTasks';
 import { Task } from '../types/task';
 
 // Freeze time at Wednesday, 10 June 2026 — matches dates.test.ts.
@@ -213,5 +213,22 @@ describe('withCompletionLinger', () => {
     const lingering = makeTask({ when: 'today', completed: true });
     const result = withCompletionLinger([doneEarlier, lingering], [lingering.id], todayFilter);
     expect(result).toEqual([lingering]);
+  });
+});
+
+describe('getViewCount — sidebar badge matches the list', () => {
+  it('today badge counts a task with only a today-or-earlier deadline (list parity)', () => {
+    const scheduled = makeTask({ when: 'today' });
+    const dueOnly = makeTask({ when: 'anytime', deadline: '2026-06-10' }); // deadline today, no when-date
+    const tasks = [scheduled, dueOnly];
+    // The Today list shows both, so the badge must too — no divergence.
+    expect(getViewCount(tasks, 'today')).toBe(filterTasks(tasks, 'today', null, null, null).length);
+    expect(getViewCount(tasks, 'today')).toBe(2);
+  });
+
+  it('review stays unbadged even though the list filter has no case for it', () => {
+    const a = makeTask();
+    const b = makeTask();
+    expect(getViewCount([a, b], 'review')).toBe(0);
   });
 });
