@@ -12,7 +12,7 @@ Bilingual: supports Dutch and English for natural language date input.
 
 ## How It Works
 
-Annado treats your Obsidian vault as its database. It scans every `.md` file for markdown checkboxes (`- [ ]` / `- [x]`), parses inline annotations like `@when(...)`, `@due(...)`, and `[[WikiLinks]]`, and presents them in a task manager UI. Every edit you make in Annado is written straight back to the markdown files — no syncing, no export step, no sidecar database.
+Annado treats your Obsidian vault as its database. It scans every `.md` file for markdown checkboxes (`- [ ]` / `- [x]`) — or, if you set an import marker tag, only the checkboxes carrying that tag — parses inline annotations like `@when(...)`, `@due(...)`, and `[[WikiLinks]]`, and presents them in a task manager UI. Every edit you make in Annado is written straight back to the markdown files — no syncing, no export step, no sidecar database.
 
 See it in action — capturing a task in an Obsidian daily note during a meeting, then editing it in Annado:
 
@@ -74,6 +74,8 @@ Annado reads and writes this inline markdown format:
 | `@completed(date)` | `@completed(2025-02-16)` | Completion date |
 
 Checklist sub-items (`- [ ] sub-task`) can be toggled directly in Annado — the change persists to the markdown file.
+
+Markdown in a task title renders formatted — **bold**, *italic*, `code`, ~~strikethrough~~, `[[wikilinks]]`, and `[links](url)` (bare URLs are clickable too) — across the list, Agenda, Review, and the task detail. Click to edit and you get the plain markdown back.
 
 ![Expanded task with a checklist](docs/images/checklist.png)
 
@@ -202,9 +204,12 @@ If you prefer folder-based grouping over explicit links, configure an **Areas pa
 
 ### Tags
 
-- Add tags with `#tagname` in the task line.
+- Add tags with `#tagname` in the task line, or manage a task's tags in the tag editor — type and press **Return** to add an existing tag or create a new one on the spot.
 - Tags are color-coded (colors persist per tag, customizable by right-clicking).
+- **Case-insensitive** — `#research` and `#Research` are the same tag; counts merge and searching either finds both.
+- **Nested & hyphenated** — Obsidian-style `#parent/child` tags group under a breadcrumb in the sidebar, and hyphenated names like `#paper-for-conference` stay intact.
 - Filter the current view by clicking a tag in the sidebar.
+- **Inherit tags from notes** (opt-in — Settings → General): show a note's frontmatter `tags:` on every task in that note. Inherited pills use the tag's own color with a dashed border (your own tags stay solid), filter and count like normal tags, and are never written to the task line. Override per note with the `annado_inherit_tags: true` / `false` property. All frontmatter forms work — YAML lists, inline arrays, comma strings, with or without `#`.
 
 ![Tag sidebar with counts](docs/images/sidebar-tags.png)
 
@@ -235,15 +240,14 @@ Create a Smart List via the `+` button in the sidebar Smart Lists section, or by
 
 ## Recurring Tasks
 
-Recurring tasks are defined as template files in your configured recurring-templates folder. Each template specifies:
+A recurring task is an ordinary task with a `@repeat(...)` rule — no separate template files. Completing it writes the *next* occurrence and marks the current one done, so it rolls forward instead of pre-generating a long list of future instances. Two modes:
 
-- **Title** and optional notes
-- **Recurrence type**: Fixed interval (every N days/weeks/months/years) or After completion (reschedule N days after marking done)
-- **Start date**, project, and priority
+- **Fixed interval** — every N days / weeks / months / years (e.g. `@repeat(every 2 weeks)`)
+- **After completion** — the next occurrence is scheduled N days after you mark it done (`… when done`)
 
-The **Recurring** view (`Cmd+8`) shows all templates. Click a template to see its pending instances. Instances are generated automatically from the template definition.
+The **Recurring** view (`Cmd+8`) collects your recurring tasks. Create or edit a recurrence with `Cmd+Shift+R`, the `+` button in the Recurring view, or from a task's detail. Richer Obsidian-Tasks rules that Annado doesn't compute are preserved verbatim and shown read-only (see [Task Format Compatibility](#task-format-compatibility)).
 
-Create or edit templates via `Cmd+Shift+R` or the `+` button in the Recurring view.
+Upgrading from the old template-based engine? **Settings** has a migration tool that detects legacy `@recurring(id)` templates and converts them safely — preview (dry-run), back up your vault, then apply.
 
 ![Recurring task editor with fixed-interval and after-completion modes](docs/images/recurring-editor.png)
 
@@ -328,16 +332,21 @@ Universal search across tasks, projects, people, views, and tags. Shows recent i
 
 ## Bulk Operations
 
-Multi-select tasks with `Cmd+Click`. When multiple tasks are selected, a bulk-action toolbar appears at the bottom of the list:
+Select multiple tasks with `Cmd+Click`, `Shift+Click` for a range, or `Cmd+A` to grab every visible task — the count on the left doubles as a **Select all / Deselect all** toggle. When more than one is selected, a bulk-action toolbar appears at the bottom of the list:
 
+- **When** — reschedule all selected tasks (full date picker)
+- **Project** — reassign all selected tasks
+- **Deadline** — set a deadline on all selected tasks
 - **Complete** all selected tasks
-- **Delete** all selected tasks
-- **Move to Project** — reassign all selected tasks
-- **Change When** — reschedule all selected tasks
-- **Change Deadline** — set deadline on all selected tasks
-- **Change Priority** — set priority on all selected tasks
+- **Delete** all selected tasks — fully undoable with **⌘Z** (one undo restores the whole batch to its original positions)
 
 ![Bulk-action toolbar with multiple tasks selected](docs/images/bulk-actions.png)
+
+### Delete & undo
+
+Hover the right edge of any task row for a delete button, or use Delete on the expanded card. Deletion is fully undoable — **⌘Z** restores the task (and its notes, checklist, and position) byte-identically in the markdown file. The optional "Confirm before deleting" prompt (Settings → General) is honored.
+
+![Hovering a task row reveals its open-in and delete buttons](docs/images/task-row-actions.png)
 
 ---
 
@@ -360,7 +369,7 @@ Open a second, independent task view alongside the main view with `Cmd+\`. The s
 - **Live sync**: file changes made in Obsidian are reflected in Annado in real time (file watcher)
 - **Wiki-links**: `[[Project]]` and `[[Person]]` links are parsed and rendered as navigation links in the UI
 - **Vault detection**: Annado detects whether the folder is an Obsidian vault (`.obsidian/` present) and adapts — e.g., daily-note settings are read from Obsidian's own config
-- **Pick your editor**: jump-to-source can open the system default, VS Code, Sublime, or a custom command instead of Obsidian (Settings → General)
+- **Open In / Open With**: open any task's (or project/person's) backing `.md` file in the app of your choice — from the task row's right-edge hover zone, the expanded card, a project/person's metadata pane, the agenda and review, or the right-click menu of sidebar projects and persons ("Open in <default>" + an "Open with…" submenu). Editors that support it (Sublime Text, VS Code, Cursor, Zed) open at the task's exact line. Configure it all in **Settings → General → Open In**: reorder the openers, hide ones you don't use, pick a default, and add custom command-line openers with `{file}` / `{dir}` / `{line}` placeholders. In an Obsidian vault, Obsidian is the default automatically.
 - **Your task format**: Annado reads Obsidian Tasks and Dataview tasks alongside its own, and writes whichever you pick — see [Task Format Compatibility](#task-format-compatibility)
 
 ---
@@ -388,9 +397,10 @@ Supported parameters: `title`, `notes`, `when`, `project`.
 | `Cmd+T` | Schedule to Today |
 | `Cmd+K` | Toggle complete |
 | `Cmd+Backspace` | Delete task |
+| `Cmd+Z` | Undo (e.g. restore a just-deleted task) |
 | `Cmd+Shift+M` | Move to Project |
 | `Cmd+Shift+L` | New Smart List |
-| `Cmd+Shift+R` | New recurring template |
+| `Cmd+Shift+R` | New recurring task |
 | `Cmd+\` | Toggle side panel |
 | `Cmd+1` – `Cmd+6` | Switch view: Inbox → Someday |
 | `Cmd+7` | Logbook |
@@ -422,6 +432,8 @@ Annado can remind you about deadlines without you having the app in front of you
 All notification types can be toggled individually, each with its own time, plus a master on/off switch and a test button (**Settings → Notifications**).
 
 There's also a **menu bar icon** (toggleable) with a quick task panel, and two system-wide shortcuts: `Cmd+Shift+Space` for Quick Add and `Cmd+Shift+A` to show/focus the app.
+
+The menu-bar panel doubles as a capture box: type a title to add a task to today, or **start the line with `-`** to jot a plain note into today's daily note instead of a task — a one-way entry that lands in the note but never shows up as a task in Annado.
 
 ![Menu bar quick task panel](docs/images/menu-bar.png)
 
@@ -462,11 +474,13 @@ Open Settings with `Cmd+,`. Five tabs:
 |---|---|
 | **Vault** | View or change the active vault location |
 | **Appearance** | Theme — Light, Dark, or System; accent color |
-| **Editor** | Where jump-to-source opens: System default, VS Code, Sublime, or a custom command |
+| **Open In** | The openers behind a file's "open in" button/menu: reorder, hide, pick a default, and add custom command-line openers (`{file}`/`{dir}`/`{line}`). Editors like Sublime/VS Code/Cursor/Zed open at the task's line; in Obsidian vaults Obsidian is the default |
+| **Import marker** | Off = import every checkbox; on = only import checkboxes carrying your marker tag (e.g. `#task`), ignoring other checkboxes |
+| **Inherit tags from notes** | Show a note's frontmatter `tags:` on its tasks (display-only; override per note with `annado_inherit_tags`) |
 | **Tasks** | Default task duration (15m–2h); confirm-before-delete toggle |
 | **Sidebar Counts** | Show/hide task counts per view and per project section |
 | **Excluded Files & Folders** | Manage the path exclusion list (see above) |
-| **Folder Paths** | Project / person / areas / recurring-template folder patterns; daily notes folder and filename format |
+| **Folder Paths** | Project / person / areas folder patterns; daily notes folder and filename format |
 
 ![Dark theme](docs/images/dark-mode.png)
 
@@ -516,10 +530,7 @@ My Vault/
 │   └── Bob.md
 ├── Tasks.md                       ← tasks can live in any .md file
 ├── Daily Notes/
-│   └── 2025-02-16.md              ← tasks here too
-├── 12. System/
-│   └── recurring-tasks/
-│       └── Weekly Review.md       ← recurring task template
+│   └── 2025-02-16.md              ← tasks here too (recurring ones just carry @repeat)
 └── ...
 ```
 
@@ -549,7 +560,6 @@ Annado looks for projects, people, and recurring task templates by matching fold
 | **Projects pattern** | `Projects` | Folders whose path contains this string are scanned for project files |
 | **Persons pattern** | `Persons` | Same idea for contacts |
 | **Areas pattern** | `Areas` | Folder-based grouping for tasks without a `[[Project]]` link |
-| **Recurring templates folder** | `12. System/recurring-tasks` | Exact path (relative to vault root) for recurring template files |
 | **Daily notes folder / format** | `00. Daily Notes` / `YYYY/MM-MMMM/YYYY-MM-DD` | Where new tasks are written (ignored in Obsidian vaults with the Daily Notes plugin configured — its settings win) |
 
 ---

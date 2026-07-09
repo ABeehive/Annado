@@ -105,13 +105,13 @@ Smart Lists combine filters — priority, deadline window, project, person, tag,
 
 ![A Smart List in the sidebar](images/smart-list.png)
 
-Recurring templates repeat on a fixed interval or after completion:
+Recurring tasks repeat on a fixed interval or after completion (a `@repeat` rule on the task, no separate template files):
 
 ![Recurring editor](images/recurring-editor.png)
 
 ![Recurring view](images/recurring.png)
 
-Multi-select tasks and act on all of them at once:
+Multi-select tasks (⇧-click for a range, ⌘A for all) and act on them at once — including an undoable bulk delete:
 
 ![Bulk actions](images/bulk-actions.png)
 
@@ -123,7 +123,7 @@ A person page shows their metadata and every linked task:
 
 ![Person page](images/person-page.png)
 
-Tags with counts; click to filter the current view:
+Tags with counts; click to filter. Tags inherited from a note's frontmatter show a dashed border:
 
 ![Tags sidebar](images/sidebar-tags.png)
 
@@ -141,7 +141,7 @@ A second view in the side panel, with drag-and-drop between the two:
 
 ![Side panel](images/side-panel.png)
 
-The menu bar panel keeps today's list one click away:
+The menu bar panel keeps today's list one click away — add a task, or start with `-` to log a plain note to the daily note:
 
 ![Menu bar panel](images/menu-bar.png)
 
@@ -163,7 +163,7 @@ Wrapped sums up your week, month, or year in animated slides:
 
 ## Settings
 
-General: vault, external editor, theme, and accent color:
+General: vault, the Open In openers, tag inheritance & import marker, theme, and accent color:
 
 ![Settings — General](images/settings-general.png)
 
