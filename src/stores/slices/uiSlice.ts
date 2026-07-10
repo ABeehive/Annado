@@ -52,6 +52,8 @@ export interface UISlice {
   toggleFolder: (folder: string) => void;
   setProjectColor: (project: string, color: string) => void;
   setTagColor: (tag: string, color: string) => void;
+  setProjectColors: (projectColors: Record<string, string>) => void;
+  setTagColors: (tagColors: Record<string, string>) => void;
   reorderProjects: (activeId: string, overId: string, displayedOrder: string[]) => void;
   setSidebarCount: (area: string, visible: boolean) => void;
   setShowProjectCounts: (visible: boolean) => void;
@@ -97,6 +99,16 @@ export const createUISlice: SliceCreator<UISlice> = (set, get) => ({
   setTagColor: (tag, color) => {
     // Key by lowercase name so the color applies to every casing variant.
     const tagColors = { ...get().tagColors, [tag.toLowerCase()]: color };
+    set({ tagColors });
+    persist('tagColors', tagColors);
+  },
+
+  setProjectColors: (projectColors) => {
+    set({ projectColors });
+    persist('projectColors', projectColors);
+  },
+
+  setTagColors: (tagColors) => {
     set({ tagColors });
     persist('tagColors', tagColors);
   },

@@ -56,7 +56,7 @@ type SettingsTab = 'general' | 'calendar' | 'shortcuts' | 'notifications' | 'abo
 
 
 export function SettingsModal({ isOpen, onClose }: SettingsProps) {
-  const { vaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, calendarEnabled, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault, pathOpeners, openerPrefs, refreshPathOpeners, reorderOpeners, setOpenerHidden, setDefaultOpener, addCustomOpener, removeCustomOpener, inheritFrontmatterTags, setInheritFrontmatterTags, setShowWelcome } = useTaskStore();
+  const { vaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, calendarEnabled, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault, pathOpeners, openerPrefs, refreshPathOpeners, reorderOpeners, setOpenerHidden, setDefaultOpener, addCustomOpener, removeCustomOpener, inheritFrontmatterTags, setInheritFrontmatterTags, usedWithObsidianPlugin, setUsedWithObsidianPlugin, setShowWelcome } = useTaskStore();
   const [localFolderPaths, setLocalFolderPaths] = useState(folderPaths);
   const [isSavingFolderPaths, setIsSavingFolderPaths] = useState(false);
   const [migrateRecurrenceOpen, setMigrateRecurrenceOpen] = useState(false);
@@ -253,6 +253,17 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
                     </p>
                   </div>
                   <Toggle checked={isObsidianVault} onChange={setIsObsidianVault} />
+                </div>
+                <div className="flex items-center justify-between mt-4">
+                  <div>
+                    <p className="text-[13px] text-[#1A1A1A] dark:text-[#E0E0E0]">This vault is used with the Obsidian plugin</p>
+                    <p className="text-[11px] text-[#B0B0B0] dark:text-[#555] mt-0.5">
+                      {usedWithObsidianPlugin
+                        ? 'Colors and task settings sync via .obsidian/plugins/annado-mobile/shared.json'
+                        : 'Enable to share settings with the Annado Obsidian plugin.'}
+                    </p>
+                  </div>
+                  <Toggle checked={usedWithObsidianPlugin} onChange={setUsedWithObsidianPlugin} />
                 </div>
                 <div className="flex items-center justify-between mt-4">
                   <div>

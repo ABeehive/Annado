@@ -335,6 +335,9 @@ pub struct Vault {
     // Where the last-scan timestamp lives (app config dir). None = startup
     // back-fill disabled (unit tests that don't opt in).
     state_path: Option<PathBuf>,
+    // JSON the desktop last wrote to shared.json, so the watcher can suppress its own write.
+    last_written_shared: Arc<RwLock<Option<String>>>,
+    shared_watcher: Option<RecommendedWatcher>,
 }
 
 /// Report from the one-time recurrence migration (template model -> inline @repeat model).
@@ -393,7 +396,13 @@ impl Vault {
             tasks: Arc::new(RwLock::new(HashMap::new())),
             watcher: None,
             state_path: None,
+            last_written_shared: Arc::new(RwLock::new(None)),
+            shared_watcher: None,
         }
+    }
+
+    pub fn record_shared_write(&self, json: &str) {
+        *self.last_written_shared.write() = Some(json.to_string());
     }
 
     pub fn set_folder_paths(&mut self, folder_paths: FolderPaths) {
@@ -1438,6 +1447,64 @@ impl Vault {
 
         self.watcher = Some(watcher);
         Ok(())
+    }
+
+    /// Watch the plugin folder for external edits to shared.json (plugin
+    /// writes or hand-edits). Emits via `callback` only when the content
+    /// differs from what the desktop last wrote (self-write guard).
+    pub fn start_watching_shared_config<F>(&mut self, callback: F) -> Result<(), String>
+    where
+        F: Fn(String) + Send + 'static,
+    {
+        if self.shared_watcher.is_some() {
+            return Ok(());
+        }
+        let plugin_dir = plugin_dir_path(&self.path);
+        if !plugin_dir.is_dir() {
+            // No plugin folder yet — nothing to watch. (Re-established on next
+            // vault load if the plugin appears.)
+            return Ok(());
+        }
+        let target = plugin_dir.join(SHARED_CONFIG_FILENAME);
+        let last_written = Arc::clone(&self.last_written_shared);
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut watcher = notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
+            if let Ok(event) = res {
+                let _ = tx.send(event);
+            }
+        })
+        .map_err(|e| format!("Failed to create shared-config watcher: {}", e))?;
+        watcher
+            .watch(&plugin_dir, RecursiveMode::NonRecursive)
+            .map_err(|e| format!("Failed to watch plugin folder: {}", e))?;
+
+        std::thread::spawn(move || {
+            for event in rx {
+                if !event.paths.iter().any(|p| p == &target) {
+                    continue;
+                }
+                let content = match std::fs::read_to_string(&target) {
+                    Ok(c) => c,
+                    Err(_) => continue, // deleted or mid-write; ignore
+                };
+                let last = last_written.read().clone();
+                if shared_change_should_emit(&content, last.as_deref()) {
+                    callback(content.clone());
+                }
+                // Track the latest observed content so a later external edit
+                // that reverts to an older value is still emitted (and duplicate
+                // watcher events for the same write stay suppressed).
+                *last_written.write() = Some(content);
+            }
+        });
+
+        self.shared_watcher = Some(watcher);
+        Ok(())
+    }
+
+    pub fn has_shared_config_watcher(&self) -> bool {
+        self.shared_watcher.is_some()
     }
 
     /// Parse project metadata from YAML frontmatter
@@ -2792,6 +2859,58 @@ fn sanitize_filename(name: &str) -> String {
         .to_string()
 }
 
+/// Obsidian plugin folder id — matches the plugin's manifest.json `id` (the
+/// Annado Mobile plugin at ~/Developer/annado-obsidian-plugin).
+pub const PLUGIN_FOLDER_ID: &str = "annado-mobile";
+pub const SHARED_CONFIG_FILENAME: &str = "shared.json";
+
+pub fn plugin_dir_path(vault_root: &Path) -> PathBuf {
+    vault_root
+        .join(".obsidian")
+        .join("plugins")
+        .join(PLUGIN_FOLDER_ID)
+}
+
+/// Write shared.json atomically (temp file + rename). No-op if the plugin
+/// folder is absent — a removed/never-installed plugin is not an error.
+pub fn write_plugin_shared_config_at(vault_root: &Path, json: &str) -> Result<(), String> {
+    let dir = plugin_dir_path(vault_root);
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    let target = dir.join(SHARED_CONFIG_FILENAME);
+    let tmp = dir.join(format!("{}.tmp", SHARED_CONFIG_FILENAME));
+    fs::write(&tmp, json.as_bytes())
+        .map_err(|e| format!("Failed to write shared config: {}", e))?;
+    fs::rename(&tmp, &target)
+        .map_err(|e| format!("Failed to finalize shared config: {}", e))?;
+    Ok(())
+}
+
+/// Delete shared.json. Missing file is success (nothing to remove).
+pub fn remove_plugin_shared_config_at(vault_root: &Path) -> Result<(), String> {
+    let target = plugin_dir_path(vault_root).join(SHARED_CONFIG_FILENAME);
+    match fs::remove_file(&target) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("Failed to remove shared config: {}", e)),
+    }
+}
+
+pub fn read_plugin_shared_config_at(vault_root: &Path) -> Option<String> {
+    let target = plugin_dir_path(vault_root).join(SHARED_CONFIG_FILENAME);
+    fs::read_to_string(&target).ok()
+}
+
+/// True when a shared.json change is an external edit worth applying;
+/// false when it exactly matches what the desktop just wrote (self-write).
+pub fn shared_change_should_emit(new_content: &str, last_written: Option<&str>) -> bool {
+    match last_written {
+        Some(prev) => prev != new_content,
+        None => true,
+    }
+}
+
 impl Vault {
     /// Delete a task by removing its line from the markdown file.
     ///
@@ -3462,5 +3581,70 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn unique_temp_dir(tag: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("annado_{}_{}", tag, nanos));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn writes_shared_config_when_plugin_folder_exists() {
+        let dir = unique_temp_dir("shared_write");
+        let plugin = plugin_dir_path(&dir);
+        fs::create_dir_all(&plugin).unwrap();
+        write_plugin_shared_config_at(&dir, "{\"schemaVersion\":1}").unwrap();
+        let f = plugin.join("shared.json");
+        assert!(f.exists());
+        assert_eq!(fs::read_to_string(&f).unwrap(), "{\"schemaVersion\":1}");
+        assert!(!plugin.join("shared.json.tmp").exists(), "temp file must be renamed away");
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn write_is_noop_without_plugin_folder() {
+        let dir = unique_temp_dir("shared_noop");
+        write_plugin_shared_config_at(&dir, "{}").unwrap();
+        assert!(!plugin_dir_path(&dir).join("shared.json").exists());
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn remove_deletes_and_is_idempotent() {
+        let dir = unique_temp_dir("shared_rm");
+        let plugin = plugin_dir_path(&dir);
+        fs::create_dir_all(&plugin).unwrap();
+        fs::write(plugin.join("shared.json"), "{}").unwrap();
+        remove_plugin_shared_config_at(&dir).unwrap();
+        assert!(!plugin.join("shared.json").exists());
+        remove_plugin_shared_config_at(&dir).unwrap(); // idempotent, no error
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn read_returns_none_when_absent_and_some_when_present() {
+        let dir = unique_temp_dir("shared_read");
+        assert!(read_plugin_shared_config_at(&dir).is_none());
+        let plugin = plugin_dir_path(&dir);
+        fs::create_dir_all(&plugin).unwrap();
+        fs::write(plugin.join("shared.json"), "{\"x\":1}").unwrap();
+        assert_eq!(read_plugin_shared_config_at(&dir), Some("{\"x\":1}".to_string()));
+        fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn suppresses_self_write() {
+        assert!(!shared_change_should_emit("{\"a\":1}", Some("{\"a\":1}")));
+    }
+
+    #[test]
+    fn emits_external_edit_or_first_change() {
+        assert!(shared_change_should_emit("{\"a\":2}", Some("{\"a\":1}")));
+        assert!(shared_change_should_emit("{\"a\":2}", None));
     }
 }

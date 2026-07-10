@@ -375,6 +375,18 @@ Open a second, independent task view alongside the main view with `Cmd+\`. The s
 
 ---
 
+## Mobile Companion — Annado for Obsidian
+
+Annado has a companion **Obsidian plugin** — [Annado Mobile](https://github.com/ABeehive/annado-obsidian-plugin) — that brings your tasks to your phone. It reads and writes the same plain-markdown checkbox tasks over the same vault (Inbox, Today, Projects, People), and ports Annado's parser, task-format dialects, and recurrence to TypeScript, so the desktop app and the plugin stay in lockstep on the file format and syntax.
+
+### Shared settings (opt-in)
+
+When a vault is used with both apps, Annado can share a defined set of **per-vault** settings with the plugin so the two stay consistent — project and tag colors, your excluded paths, and your task-format choices. Turn on **Settings → General → "This vault is used with the Obsidian plugin"** and Annado keeps a small `shared.json` inside the plugin's folder (`.obsidian/plugins/annado-mobile/`); both sides read and write it, so a color you pick in one app shows up in the other. It's **off by default** — leave it off and nothing changes (settings stay local, colors global).
+
+![Settings — General with the Obsidian plugin toggle](docs/images/settings-general.png)
+
+---
+
 ## Deep Linking
 
 Annado registers the `annado://` URL scheme for external capture from Shortcuts, Alfred, shell scripts, etc.:

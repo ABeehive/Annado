@@ -26,12 +26,14 @@ pub struct AppConfig {
     // Import marker tag (e.g. "task"). Empty = import every checkbox (default).
     #[serde(default)]
     pub task_marker_tag: String,
-    // "Open In" preferences: per-target order/visibility and any custom openers.
-    #[serde(default)]
-    pub opener_prefs: OpenerPrefs,
     // Show a note's frontmatter tags on its tasks (display-only inheritance).
     #[serde(default)]
     pub inherit_frontmatter_tags: bool,
+    #[serde(default)]
+    pub used_with_obsidian_plugin_vaults: Vec<String>,
+    // "Open In" preferences: per-target order/visibility and any custom openers.
+    #[serde(default)]
+    pub opener_prefs: OpenerPrefs,
 }
 
 /// A user-defined opener that runs an arbitrary command against a path. `command`
@@ -120,8 +122,9 @@ fn load_config(app: &AppHandle) -> AppConfig {
                 excluded_paths: Vec::new(),
                 task_format: String::new(),
                 task_marker_tag: String::new(),
-                opener_prefs: OpenerPrefs::default(),
                 inherit_frontmatter_tags: false,
+                used_with_obsidian_plugin_vaults: Vec::new(),
+                opener_prefs: OpenerPrefs::default(),
             };
             // Save migrated config and remove legacy file
             if let Some(config_path) = get_config_path(app) {
@@ -264,6 +267,17 @@ pub fn set_vault_path(path: String, app: AppHandle) -> Result<Vec<Task>, String>
             eprintln!("Failed to emit tasks-updated event: {}", e);
         }
     })?;
+
+    // Watch for external edits to shared.json (plugin writes or hand-edits) so
+    // the frontend can react even though the vault watcher skips hidden dirs.
+    let app_handle_shared = app.clone();
+    if let Err(e) = vault.start_watching_shared_config(move |content| {
+        if let Err(e) = app_handle_shared.emit("shared-config-changed", &content) {
+            eprintln!("Failed to emit shared-config-changed event: {}", e);
+        }
+    }) {
+        eprintln!("Failed to start shared-config watcher: {}", e);
+    }
 
     // Store the vault
     {
@@ -800,6 +814,84 @@ pub fn set_annado_exclude_in_file(relative_path: String, exclude: bool) -> Resul
     with_vault_result(|vault| vault.set_annado_exclude_frontmatter(&relative_path, exclude))
 }
 
+#[tauri::command]
+pub fn write_plugin_shared_config(json: String) -> Result<(), String> {
+    with_vault_result(|vault| {
+        // Record before writing so the watcher (Task 4) can suppress this
+        // exact content when it fires for our own write.
+        vault.record_shared_write(&json);
+        crate::vault::write_plugin_shared_config_at(&vault.path, &json)
+    })
+}
+
+#[tauri::command]
+pub fn remove_plugin_shared_config() -> Result<(), String> {
+    with_vault_result(|vault| crate::vault::remove_plugin_shared_config_at(&vault.path))
+}
+
+#[tauri::command]
+pub fn read_plugin_shared_config() -> Result<Option<String>, String> {
+    with_vault(|vault| crate::vault::read_plugin_shared_config_at(&vault.path))
+}
+
+/// Whether `vault_path` is in the opted-in list. Pure so it's unit-testable
+/// without a live `AppHandle`/config file.
+fn vault_opted_in(vaults: &[String], vault_path: Option<&str>) -> bool {
+    match vault_path {
+        Some(vp) => vaults.iter().any(|p| p == vp),
+        None => false,
+    }
+}
+
+/// Add/remove `vault_path` from the opted-in list. Pure so it's unit-testable
+/// without a live `AppHandle`/config file.
+fn set_vault_opt_in(vaults: &mut Vec<String>, vault_path: &str, value: bool) {
+    if value {
+        if !vaults.iter().any(|p| p == vault_path) {
+            vaults.push(vault_path.to_string());
+        }
+    } else {
+        vaults.retain(|p| p != vault_path);
+    }
+}
+
+#[tauri::command]
+pub fn get_used_with_obsidian_plugin(app: AppHandle) -> bool {
+    let config = load_config(&app);
+    vault_opted_in(
+        &config.used_with_obsidian_plugin_vaults,
+        config.vault_path.as_deref(),
+    )
+}
+
+#[tauri::command]
+pub fn set_used_with_obsidian_plugin(value: bool, app: AppHandle) -> Result<(), String> {
+    let mut config = load_config(&app);
+    let Some(vault_path) = config.vault_path.clone() else {
+        return Err("No vault selected".to_string());
+    };
+    set_vault_opt_in(&mut config.used_with_obsidian_plugin_vaults, &vault_path, value);
+    save_config(&app, &config)
+}
+
+#[tauri::command]
+pub fn ensure_shared_config_watcher(app: AppHandle) -> Result<bool, String> {
+    let mut vault_lock = get_vault_lock().write();
+    if let Some(ref mut vault) = *vault_lock {
+        if !vault.has_shared_config_watcher() {
+            let app_handle = app.clone();
+            vault.start_watching_shared_config(move |content| {
+                if let Err(e) = app_handle.emit("shared-config-changed", &content) {
+                    eprintln!("Failed to emit shared-config-changed event: {}", e);
+                }
+            })?;
+        }
+        Ok(vault.has_shared_config_watcher())
+    } else {
+        Err("Vault not initialized".to_string())
+    }
+}
+
 // Project / Person creation and rename commands
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1044,5 +1136,54 @@ mod tests {
         assert!(!dir.join("Inbox.md").exists());
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn vault_opted_in_true_when_vault_path_is_in_list() {
+        let vaults = vec!["/vaults/a".to_string(), "/vaults/b".to_string()];
+        assert!(vault_opted_in(&vaults, Some("/vaults/a")));
+        assert!(vault_opted_in(&vaults, Some("/vaults/b")));
+    }
+
+    #[test]
+    fn vault_opted_in_false_when_vault_path_not_in_list() {
+        let vaults = vec!["/vaults/a".to_string()];
+        assert!(!vault_opted_in(&vaults, Some("/vaults/other")));
+    }
+
+    #[test]
+    fn vault_opted_in_false_when_no_vault_path() {
+        let vaults = vec!["/vaults/a".to_string()];
+        assert!(!vault_opted_in(&vaults, None));
+    }
+
+    #[test]
+    fn set_vault_opt_in_enable_is_idempotent() {
+        let mut vaults = vec!["/vaults/a".to_string()];
+        set_vault_opt_in(&mut vaults, "/vaults/a", true);
+        set_vault_opt_in(&mut vaults, "/vaults/a", true);
+        assert_eq!(vaults, vec!["/vaults/a".to_string()]);
+    }
+
+    #[test]
+    fn set_vault_opt_in_enable_adds_new_vault() {
+        let mut vaults: Vec<String> = Vec::new();
+        set_vault_opt_in(&mut vaults, "/vaults/a", true);
+        assert_eq!(vaults, vec!["/vaults/a".to_string()]);
+    }
+
+    #[test]
+    fn set_vault_opt_in_disable_removes_only_that_vault() {
+        let mut vaults = vec!["/vaults/a".to_string(), "/vaults/b".to_string()];
+        set_vault_opt_in(&mut vaults, "/vaults/a", false);
+        // Other vaults stay untouched.
+        assert_eq!(vaults, vec!["/vaults/b".to_string()]);
+    }
+
+    #[test]
+    fn set_vault_opt_in_disable_on_absent_vault_is_noop() {
+        let mut vaults = vec!["/vaults/b".to_string()];
+        set_vault_opt_in(&mut vaults, "/vaults/a", false);
+        assert_eq!(vaults, vec!["/vaults/b".to_string()]);
     }
 }

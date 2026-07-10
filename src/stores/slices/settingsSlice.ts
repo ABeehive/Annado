@@ -14,6 +14,17 @@ import {
   type OpenerPrefs,
 } from '../../utils/pathOpener';
 import type { FolderPaths, Task, SmartList, TaskFormat, TaskFormatDetection } from '../../types/task';
+import {
+  getUsedWithPlugin,
+  setUsedWithPlugin,
+  readSharedConfig,
+  publishSharedConfig,
+  removeSharedConfig,
+  applySharedConfig,
+  ensureSharedConfigWatcher,
+  beginVaultLoadPublishSuppression,
+  endVaultLoadPublishSuppression,
+} from '../../utils/sharedConfig';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -96,7 +107,12 @@ async function loadVault(
   path: string,
 ): Promise<void> {
   _vaultVersion++;
+  const loadVersion = _vaultVersion;
   set({ isLoading: true, error: null });
+  // Load-time store churn (tasks, per-vault fetches, the previous vault's stale
+  // toggle value) must never be published to the new vault's shared.json — it
+  // would snapshot pre-adopt state and revert plugin-side changes.
+  beginVaultLoadPublishSuppression();
   try {
     const tasks = await invoke<Task[]>(command, { path });
     const storedLists = localStorage.getItem(`smartLists:${path}`);
@@ -115,8 +131,20 @@ async function loadVault(
     get().fetchTaskMarker();
     get().fetchInheritFrontmatterTags();
     get().fetchRecurringTemplateCount();
+    const v = _vaultVersion;
+    try {
+      await get().fetchUsedWithObsidianPlugin();
+      if (_vaultVersion !== v) return; // vault switched mid-load
+      await get().adoptOrSeedSharedConfig();
+    } catch (e) {
+      console.warn('shared-config: adopt/seed failed', e); // optional sync must not fail vault load
+    }
   } catch (error) {
     storeError(set, error, { isLoading: false });
+  } finally {
+    // Only the newest load may lift the suppression — an overlapping switch
+    // re-raised the flag and owns it now.
+    if (_vaultVersion === loadVersion) endVaultLoadPublishSuppression();
   }
 }
 
@@ -147,6 +175,8 @@ export interface SettingsSlice {
   /** False until the initial saved-vault lookup completes. Gates the UI so we don't flash the
    *  welcome screen before we know whether a vault is saved. */
   vaultPathLoaded: boolean;
+  /** Opt-in: this vault is also opened by the Obsidian plugin, so settings sync via shared.json. */
+  usedWithObsidianPlugin: boolean;
 
   setVaultPath: (path: string) => Promise<void>;
   createVault: (path: string) => Promise<void>;
@@ -176,11 +206,15 @@ export interface SettingsSlice {
   fetchExcludedPaths: () => Promise<void>;
   addExcludedPath: (path: string) => Promise<void>;
   removeExcludedPath: (path: string) => Promise<void>;
+  setExcludedPathsList: (excludedPaths: string[]) => Promise<void>;
   setTheme: (theme: ThemePreference) => void;
   setAccentColor: (color: string | null) => void;
   setKeybinding: (action: string, keys: string) => void;
   setConfirmDelete: (confirm: boolean) => void;
   clearError: () => void;
+  fetchUsedWithObsidianPlugin: () => Promise<void>;
+  setUsedWithObsidianPlugin: (value: boolean) => Promise<void>;
+  adoptOrSeedSharedConfig: () => Promise<void>;
 }
 
 export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
@@ -203,6 +237,7 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
   confirmDelete: persisted.confirmDelete,
   showWelcome: false,
   vaultPathLoaded: false,
+  usedWithObsidianPlugin: false,
 
   setVaultPath: (path: string) => loadVault(set, get, 'set_vault_path', path),
   createVault: (path: string) => loadVault(set, get, 'create_vault', path),
@@ -445,6 +480,24 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
     }
   },
 
+  // Bulk setter (used by shared-config read-back): diffs against the current list and
+  // applies the same per-path annado_exclude frontmatter side effect as addExcludedPath/
+  // removeExcludedPath, mirroring their call shape and error tolerance exactly (added paths
+  // are awaited and can propagate; removed paths are fire-and-forget and swallow errors).
+  setExcludedPathsList: async (excludedPaths: string[]) => {
+    const { excludedPaths: oldPaths } = get();
+    const added = excludedPaths.filter((p) => !oldPaths.includes(p));
+    const removed = oldPaths.filter((p) => !excludedPaths.includes(p));
+    const tasks = await invoke<Task[]>('set_excluded_paths', { excludedPaths });
+    for (const path of added) {
+      await invoke('set_annado_exclude_in_file', { relativePath: path, exclude: true });
+    }
+    for (const path of removed) {
+      invoke('set_annado_exclude_in_file', { relativePath: path, exclude: false }).catch(() => {});
+    }
+    set({ tasks, excludedPaths });
+  },
+
   setTheme: (theme: ThemePreference) => {
     set({ theme });
     localStorage.setItem('theme', theme);
@@ -471,4 +524,36 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  fetchUsedWithObsidianPlugin: async () =>
+    guardedFetch(set, () => getUsedWithPlugin(), (usedWithObsidianPlugin) => set({ usedWithObsidianPlugin })),
+
+  setUsedWithObsidianPlugin: async (value: boolean) => {
+    set({ usedWithObsidianPlugin: value });
+    await setUsedWithPlugin(value); // persist in config.json
+    if (value) {
+      await ensureSharedConfigWatcher().catch(() => {}); // start the shared.json watcher
+      await publishSharedConfig(); // seed shared.json from current settings
+    } else {
+      await removeSharedConfig(); // revert to local config (colors global again)
+    }
+  },
+
+  // On vault load: an existing shared.json wins (adopt it, so switching to
+  // vault B doesn't overwrite B's colors with A's); otherwise seed this vault.
+  adoptOrSeedSharedConfig: async () => {
+    if (!get().usedWithObsidianPlugin) return;
+    const v = _vaultVersion;
+    // Ensure excludedPaths holds this vault's list before adopt can diff
+    // against it (loadVault fires fetchExcludedPaths without awaiting).
+    await get().fetchExcludedPaths();
+    if (_vaultVersion !== v) return; // vault switched while fetching
+    const existing = await readSharedConfig();
+    if (_vaultVersion !== v) return; // vault switched while reading
+    if (existing) {
+      await applySharedConfig(existing, () => _vaultVersion === v);
+    } else {
+      await publishSharedConfig();
+    }
+  },
 });

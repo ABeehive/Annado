@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { useTaskStore, QuickAddPrefill } from '../stores/taskStore';
 import { isDateUpcoming } from '../utils/dates';
+import { setupSharedConfigSync } from '../utils/sharedConfig';
 
 const MAX_DEEP_LINK_PARAM_LENGTH = 1000;
 
@@ -44,8 +45,11 @@ export function useAppEvents() {
       cleanup = unsub;
     });
 
+    const teardownSharedSync = setupSharedConfigSync();
+
     return () => {
       cleanup?.();
+      teardownSharedSync();
     };
   }, []);
 
