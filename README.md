@@ -183,6 +183,7 @@ Tasks can have a separate deadline (`@due(...)`), independent of their scheduled
 
 - Each `.md` file in your configured projects folder becomes a project.
 - Nest folders to create hierarchy — child projects inherit the parent folder's color.
+- Nest projects explicitly with an `up:` wikilink in a project's frontmatter (`up: "[[Parent Project]]"`) — the child appears under its parent in the sidebar. If the `up` target isn't a project (the projects-folder index note, or an archived/renamed one), the project shows top-level instead of being hidden.
 - Assign tasks via `[[Project Name]]` wiki-links.
 - Project metadata (description, deadline, start date, ranking, related people, milestones) can be set in the file's YAML frontmatter.
 - Projects are color-coded and drag-to-reorder in the sidebar.

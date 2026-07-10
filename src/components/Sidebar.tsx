@@ -18,6 +18,7 @@ import { getViewIcon, PersonIcon } from '../utils/viewIcons';
 import { useClickOutside } from '../hooks/useClickOutside';
 import { getViewCount } from '../stores/filterTasks';
 import { AgendaDaySelector } from '../features/agenda/AgendaDaySelector';
+import { buildProjectHierarchy, type ProjectHierarchy } from '../utils/projectHierarchy';
 
 const chevronIcon = (expanded: boolean) => (
   <svg
@@ -109,11 +110,6 @@ function ProjectIcon({
   );
 }
 
-interface ProjectHierarchy {
-  project: ProjectInfo;
-  children: ProjectHierarchy[];  // Changed to recursive structure
-}
-
 // Sortable wrapper for project items
 export function Sidebar() {
   const { currentView, setCurrentView, tasks, selectedProject, setSelectedProject, availableProjects, selectedPerson, setSelectedPerson, availablePeople, selectedTag, setSelectedTag, availableTags, sidebarWidth, setSidebarWidth, expandedFolders, toggleFolder, projectColors, setProjectColor, tagColors, setTagColor, projectOrder, reorderProjects, sidebarCounts, showProjectCounts, smartLists, selectedSmartListId, deleteSmartList, setSelectedSmartList, renameProject, renamePerson, pathOpeners, openerPrefs, isObsidianVault } = useTaskStore(useShallow((s) => ({ currentView: s.currentView, setCurrentView: s.setCurrentView, tasks: s.tasks, selectedProject: s.selectedProject, setSelectedProject: s.setSelectedProject, availableProjects: s.availableProjects, selectedPerson: s.selectedPerson, setSelectedPerson: s.setSelectedPerson, availablePeople: s.availablePeople, selectedTag: s.selectedTag, setSelectedTag: s.setSelectedTag, availableTags: s.availableTags, sidebarWidth: s.sidebarWidth, setSidebarWidth: s.setSidebarWidth, expandedFolders: s.expandedFolders, toggleFolder: s.toggleFolder, projectColors: s.projectColors, setProjectColor: s.setProjectColor, tagColors: s.tagColors, setTagColor: s.setTagColor, projectOrder: s.projectOrder, reorderProjects: s.reorderProjects, sidebarCounts: s.sidebarCounts, showProjectCounts: s.showProjectCounts, smartLists: s.smartLists, selectedSmartListId: s.selectedSmartListId, deleteSmartList: s.deleteSmartList, setSelectedSmartList: s.setSelectedSmartList, renameProject: s.renameProject, renamePerson: s.renamePerson, pathOpeners: s.pathOpeners, openerPrefs: s.openerPrefs, isObsidianVault: s.isObsidianVault, })));
@@ -192,47 +188,11 @@ export function Sidebar() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showShortcuts]);
 
-  // Build project hierarchy (recursive tree structure)
-  const projectHierarchy = useMemo(() => {
-    const childrenByParent = new Map<string, ProjectInfo[]>();
-    const topLevel: ProjectInfo[] = [];
-
-    // Group projects by parent
-    for (const project of availableProjects) {
-      const parent = project.metadata.up || null;
-      if (!parent) {
-        topLevel.push(project);
-      } else {
-        const children = childrenByParent.get(parent) || [];
-        children.push(project);
-        childrenByParent.set(parent, children);
-      }
-    }
-
-    // Sort function based on projectOrder
-    const sortProjects = (projects: ProjectInfo[]): ProjectInfo[] => {
-      return [...projects].sort((a, b) => {
-        if (projectOrder.length === 0) {
-          return a.path.localeCompare(b.path);
-        }
-        const aIndex = projectOrder.indexOf(a.name);
-        const bIndex = projectOrder.indexOf(b.name);
-        if (aIndex === -1 && bIndex === -1) return a.name.localeCompare(b.name);
-        if (aIndex === -1) return 1;
-        if (bIndex === -1) return -1;
-        return aIndex - bIndex;
-      });
-    };
-
-    // Recursive tree builder
-    const buildTree = (project: ProjectInfo): ProjectHierarchy => ({
-      project,
-      children: sortProjects(childrenByParent.get(project.name) || []).map(buildTree),
-    });
-
-    // Build trees for all top-level projects
-    return sortProjects(topLevel).map(buildTree);
-  }, [availableProjects, projectOrder]);
+  // Build project hierarchy (recursive tree; orphaned `up:` renders top-level)
+  const projectHierarchy = useMemo(
+    () => buildProjectHierarchy(availableProjects, projectOrder),
+    [availableProjects, projectOrder],
+  );
 
   // Flat, displayed order of every project name (parents + children, render order).
   // Passed to reorderProjects so a first drag starts from what's on screen.
