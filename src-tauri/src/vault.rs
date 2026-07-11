@@ -212,6 +212,30 @@ fn apply_inherited_tags(tasks: &mut [Task], content: &str, global_enabled: bool)
     }
 }
 
+/// Same subtree match rule as the frontend's tagMatchesFilter (tags.ts):
+/// case-insensitive; excluded "werk" covers "werk" and "werk/admin", not "werkplaats".
+/// Uses to_lowercase() (not eq_ignore_ascii_case) so the rule matches tags.ts exactly.
+fn tag_matches_exclusion(task_tag: &str, excluded: &str) -> bool {
+    let t = task_tag.to_lowercase();
+    let f = excluded.to_lowercase();
+    t == f || t.starts_with(&(f + "/"))
+}
+
+/// Drop tasks carrying an excluded tag, own or inherited. Must run after
+/// `apply_inherited_tags` so frontmatter tags count too.
+fn remove_excluded_tag_tasks(tasks: &mut Vec<Task>, excluded_tags: &[String]) {
+    if excluded_tags.is_empty() {
+        return;
+    }
+    tasks.retain(|task| {
+        !task
+            .tags
+            .iter()
+            .chain(task.inherited_tags.iter())
+            .any(|t| excluded_tags.iter().any(|ex| tag_matches_exclusion(t, ex)))
+    });
+}
+
 /// Walk the vault once and collect the person/project names used for wiki-link
 /// resolution. The watcher caches the result and only refreshes it when a file
 /// inside one of the relevant folders changes.
@@ -329,6 +353,7 @@ pub struct Vault {
     task_format: Arc<RwLock<crate::taskformat::TaskFormat>>,
     task_marker: Arc<RwLock<String>>, // import marker tag ("" = import every checkbox)
     inherit_tags: Arc<RwLock<bool>>, // global tag-inheritance setting (frontmatter tags)
+    excluded_tags: Arc<RwLock<Vec<String>>>, // tasks with these tags (own or inherited) are dropped at scan time
     recurring_template_count: Arc<RwLock<usize>>, // legacy templates found in the last scan
     tasks: Arc<RwLock<HashMap<String, Task>>>,
     watcher: Option<RecommendedWatcher>,
@@ -392,6 +417,7 @@ impl Vault {
             task_format: Arc::new(RwLock::new(crate::taskformat::TaskFormat::Annado)),
             task_marker: Arc::new(RwLock::new(String::new())),
             inherit_tags: Arc::new(RwLock::new(false)),
+            excluded_tags: Arc::new(RwLock::new(Vec::new())),
             recurring_template_count: Arc::new(RwLock::new(0)),
             tasks: Arc::new(RwLock::new(HashMap::new())),
             watcher: None,
@@ -468,6 +494,12 @@ impl Vault {
 
     pub fn inherit_tags_enabled(&self) -> bool {
         *self.inherit_tags.read()
+    }
+
+    /// Tags whose tasks are dropped at scan time (own or inherited; subtree match).
+    /// Shared cell so the background watcher reads the live value, like `inherit_tags`.
+    pub fn set_excluded_tags(&self, tags: Vec<String>) {
+        *self.excluded_tags.write() = tags;
     }
 
     /// Non-hidden, non-excluded `.md` files anywhere in the vault. The single place that
@@ -687,6 +719,7 @@ impl Vault {
                 apply_areas_project(&mut tasks, &self.folder_paths.areas_pattern);
                 resolve_wikilinks(&mut tasks, &person_names, &project_names);
                 apply_inherited_tags(&mut tasks, &content, self.inherit_tags_enabled());
+                remove_excluded_tag_tasks(&mut tasks, &self.excluded_tags.read());
 
                 // Startup back-fill: stamp created-dates only for files modified
                 // since the previous scan, so a first run or vault import never
@@ -1254,6 +1287,7 @@ impl Vault {
         let task_marker = Arc::clone(&self.task_marker);
         let task_format = Arc::clone(&self.task_format);
         let inherit_tags = Arc::clone(&self.inherit_tags);
+        let excluded_tags = Arc::clone(&self.excluded_tags);
 
         // Watcher thread: debounce a burst of events, then re-parse only the
         // changed files and diff them into the cache (no full-vault rescans).
@@ -1350,6 +1384,7 @@ impl Vault {
                             apply_areas_project(&mut tasks, &areas_pattern);
                             resolve_wikilinks(&mut tasks, &person_names, &project_names);
                             apply_inherited_tags(&mut tasks, &content, *inherit_tags.read());
+                            remove_excluded_tag_tasks(&mut tasks, &excluded_tags.read());
                             Some(tasks)
                         }
                     } else {
@@ -3448,6 +3483,64 @@ mod tests {
         assert!(content.contains("- [ ] alpha\n"), "line must stay unchanged: {content}");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_scan_drops_tasks_with_excluded_tags_including_inherited() {
+        let (dir, vault) = make_temp_vault();
+        vault.set_inherit_tags(true);
+        vault.set_excluded_tags(vec!["wachten".to_string()]);
+
+        // Own tag, subtree tag, inherited frontmatter tag, and a per-note opt-out.
+        fs::write(dir.join("Own.md"),
+            "- [ ] visible\n- [ ] hidden #wachten\n- [ ] subtag #wachten/extern\n").unwrap();
+        fs::write(dir.join("Inherited.md"),
+            "---\ntags: [wachten]\n---\n- [ ] inherited-hidden\n").unwrap();
+        fs::write(dir.join("OptOut.md"),
+            "---\ntags: [wachten]\nannado_inherit_tags: false\n---\n- [ ] optout-visible\n").unwrap();
+
+        let tasks = vault.scan();
+        let titles: Vec<&str> = tasks.iter().map(|t| t.title.as_str()).collect();
+        assert!(titles.contains(&"visible"));
+        assert!(titles.contains(&"optout-visible"),
+            "per-note opt-out disables inheritance, so its task must stay");
+        assert!(!titles.contains(&"hidden"), "own tag must exclude");
+        assert!(!titles.contains(&"subtag"), "subtree tag must exclude");
+        assert!(!titles.contains(&"inherited-hidden"), "inherited tag must exclude");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_remove_excluded_tag_tasks_matrix() {
+        let mut with_own = task_at("a.md", 1);
+        with_own.tags = vec!["Wachten".to_string()]; // case differs from the exclusion
+        let mut with_inherited = task_at("a.md", 2);
+        with_inherited.inherited_tags = vec!["template".to_string()];
+        let mut with_subtag = task_at("a.md", 3);
+        with_subtag.tags = vec!["wachten/extern".to_string()]; // subtree of "wachten"
+        let mut near_miss = task_at("a.md", 4);
+        near_miss.tags = vec!["wachtenlijst".to_string()]; // prefix but NOT a subtree
+        let untagged = task_at("a.md", 5);
+
+        let mut tasks = vec![with_own, with_inherited, with_subtag, near_miss, untagged];
+        remove_excluded_tag_tasks(&mut tasks, &["wachten".to_string(), "Template".to_string()]);
+
+        let lines: Vec<usize> = tasks.iter().map(|t| t.line_number).collect();
+        assert_eq!(
+            lines,
+            vec![4, 5],
+            "own tag (case-insensitive), inherited tag and subtree must drop; near-miss and untagged stay"
+        );
+    }
+
+    #[test]
+    fn test_remove_excluded_tag_tasks_empty_list_keeps_all() {
+        let mut tagged = task_at("a.md", 1);
+        tagged.tags = vec!["wachten".to_string()];
+        let mut tasks = vec![tagged];
+        remove_excluded_tag_tasks(&mut tasks, &[]);
+        assert_eq!(tasks.len(), 1, "empty exclusion list must be a no-op");
     }
 
     #[test]

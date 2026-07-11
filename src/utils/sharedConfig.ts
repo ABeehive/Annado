@@ -10,6 +10,7 @@ export interface SharedConfig {
   schemaVersion: number;
   generatedBy: string;
   excludedPaths: string[];
+  excludedTags: string[];
   projectColors: Record<string, string>;
   tagColors: Record<string, string>;
   taskFormat: string;
@@ -18,7 +19,7 @@ export interface SharedConfig {
 }
 
 /**
- * Single source of truth for the six synced fields. Each entry drives both
+ * Single source of truth for the seven synced fields. Each entry drives both
  * publish (`read` → JSON) and read-back (`apply` ← JSON). Adding a field later
  * is one entry here; the Rust write command stays field-agnostic.
  */
@@ -54,6 +55,12 @@ export const SHARED_FIELDS: FieldDescriptor[] = [
     key: 'excludedPaths',
     read: (s) => s.excludedPaths,
     apply: (s, v) => s.setExcludedPathsList(v as string[]),
+    valid: isStringArray,
+  },
+  {
+    key: 'excludedTags',
+    read: (s) => s.excludedTags,
+    apply: (s, v) => s.setExcludedTagsList(v as string[]),
     valid: isStringArray,
   },
   {

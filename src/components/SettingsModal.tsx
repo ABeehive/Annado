@@ -56,7 +56,7 @@ type SettingsTab = 'general' | 'calendar' | 'shortcuts' | 'notifications' | 'abo
 
 
 export function SettingsModal({ isOpen, onClose }: SettingsProps) {
-  const { vaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, calendarEnabled, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault, pathOpeners, openerPrefs, refreshPathOpeners, reorderOpeners, setOpenerHidden, setDefaultOpener, addCustomOpener, removeCustomOpener, inheritFrontmatterTags, setInheritFrontmatterTags, usedWithObsidianPlugin, setUsedWithObsidianPlugin, setShowWelcome } = useTaskStore();
+  const { vaultPath, keybindings, setKeybinding, folderPaths, setFolderPaths, theme, setTheme, accentColor, setAccentColor, excludedPaths, addExcludedPath, removeExcludedPath, excludedTags, addExcludedTag, removeExcludedTag, availableTags, calendarEnabled, setCalendarEnabled, availableCalendars, enabledCalendarNames, toggleCalendar, checkCalendarAccess, calendarAccessGranted, calendarBlockingDefaults, setCalendarBlocking, workSchedule, setWorkSchedule, sidebarCounts, setSidebarCount, showProjectCounts, setShowProjectCounts, weekStartsOn, setWeekStartsOn, agendaShowWeekends, setAgendaShowWeekends, defaultTaskDuration, setDefaultTaskDuration, confirmDelete, setConfirmDelete, isObsidianVault, setIsObsidianVault, pathOpeners, openerPrefs, refreshPathOpeners, reorderOpeners, setOpenerHidden, setDefaultOpener, addCustomOpener, removeCustomOpener, inheritFrontmatterTags, setInheritFrontmatterTags, usedWithObsidianPlugin, setUsedWithObsidianPlugin, setShowWelcome } = useTaskStore();
   const [localFolderPaths, setLocalFolderPaths] = useState(folderPaths);
   const [isSavingFolderPaths, setIsSavingFolderPaths] = useState(false);
   const [migrateRecurrenceOpen, setMigrateRecurrenceOpen] = useState(false);
@@ -80,6 +80,21 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
     : taskFormat === 'annado' ? 'Annado'
     : 'Not set';
   const [newExcludedPath, setNewExcludedPath] = useState('');
+  const [newExcludedTag, setNewExcludedTag] = useState('');
+  const [excludedTagError, setExcludedTagError] = useState<string | null>(null);
+
+  const submitExcludedTag = () => {
+    const name = normalizeTagInput(newExcludedTag);
+    if (!name) return;
+    // UI-only guard: excluding the import marker would hide every task.
+    if (taskMarkerTag && name.toLowerCase() === taskMarkerTag.toLowerCase()) {
+      setExcludedTagError(`#${taskMarkerTag} is your import marker — excluding it would hide every task.`);
+      return;
+    }
+    setExcludedTagError(null);
+    addExcludedTag(name);
+    setNewExcludedTag('');
+  };
   const [calendarPermissionError, setCalendarPermissionError] = useState(false);
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
   const [appVersion, setAppVersion] = useState('0.1.0');
@@ -638,6 +653,60 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
                   </div>
                   <p className="text-[11px] text-[#B0B0B0] dark:text-[#555]">
                     Paths relative to vault root. Files will also get <code className="bg-[#F5F5F5] dark:bg-[#333] px-1 rounded">annado_exclude: true</code> in their frontmatter.
+                  </p>
+                </div>
+              </div>
+
+              {/* Excluded Tags Section */}
+              <div>
+                <h3 className="text-[10px] font-semibold text-[#B0B0B0] dark:text-[#555] uppercase tracking-wider mb-3">
+                  Excluded Tags
+                </h3>
+                <div className="space-y-2.5">
+                  {excludedTags.length > 0 && (
+                    <div className="space-y-1.5">
+                      {excludedTags.map((tag) => (
+                        <div key={tag} className={`flex items-center justify-between ${filledRowClass}`}>
+                          <span className="text-[13px] text-[#1A1A1A] dark:text-[#E0E0E0] truncate mr-2">#{tag}</span>
+                          <button
+                            onClick={() => removeExcludedTag(tag)}
+                            className="text-[#C8C8C8] hover:text-danger dark:text-[#555] dark:hover:text-[#EF5350] transition-colors flex-shrink-0"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      list="excluded-tag-suggestions"
+                      value={newExcludedTag}
+                      onChange={(e) => { setNewExcludedTag(e.target.value); setExcludedTagError(null); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') submitExcludedTag(); }}
+                      className="flex-1 px-3 py-2 text-[13px] bg-transparent border-b border-[#E8E8E8] dark:border-[#3A3A3A] text-[#1A1A1A] dark:text-[#E0E0E0] placeholder-[#C0C0C0] dark:placeholder-[#555] focus:outline-none focus:border-primary/40 transition-colors"
+                      placeholder="wachten"
+                    />
+                    <datalist id="excluded-tag-suggestions">
+                      {availableTags.map((t) => (
+                        <option key={t.name} value={t.name} />
+                      ))}
+                    </datalist>
+                    <button
+                      onClick={submitExcludedTag}
+                      className="text-[12px] font-medium text-primary hover:text-[#4A5AB8] px-2 py-1.5 transition-colors"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  {excludedTagError && (
+                    <p className="text-[11px] text-danger dark:text-[#EF5350]">{excludedTagError}</p>
+                  )}
+                  <p className="text-[11px] text-[#B0B0B0] dark:text-[#555]">
+                    Tasks with these tags — on the line or inherited from the note's frontmatter — are hidden everywhere. Excluding <code className="bg-[#F5F5F5] dark:bg-[#333] px-1 rounded">#personal</code> also covers <code className="bg-[#F5F5F5] dark:bg-[#333] px-1 rounded">#personal/finances</code>.
                   </p>
                 </div>
               </div>

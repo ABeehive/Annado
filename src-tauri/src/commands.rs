@@ -18,6 +18,8 @@ pub struct AppConfig {
     #[serde(default)]
     pub excluded_paths: Vec<String>,
     #[serde(default)]
+    pub excluded_tags: Vec<String>,
+    #[serde(default)]
     pub is_obsidian_vault: bool,
     // Chosen write format ("annado" | "obsidian_tasks" | "dataview"). Empty = unset →
     // the frontend shows the first-run format picker; writing stays Annado until chosen.
@@ -120,6 +122,7 @@ fn load_config(app: &AppHandle) -> AppConfig {
                 vault_path: Some(vault_path.trim().to_string()),
                 folder_paths: FolderPaths::default(),
                 excluded_paths: Vec::new(),
+                excluded_tags: Vec::new(),
                 task_format: String::new(),
                 task_marker_tag: String::new(),
                 inherit_frontmatter_tags: false,
@@ -249,6 +252,7 @@ pub fn set_vault_path(path: String, app: AppHandle) -> Result<Vec<Task>, String>
         vault.set_state_path(dir.join("scan-state.json"));
     }
     vault.set_excluded_paths(config.excluded_paths.clone());
+    vault.set_excluded_tags(config.excluded_tags.clone());
     vault.set_task_format(crate::taskformat::TaskFormat::from_config(&config.task_format));
     vault.set_task_marker(config.task_marker_tag.clone());
     vault.set_inherit_tags(config.inherit_frontmatter_tags);
@@ -803,6 +807,28 @@ pub fn set_excluded_paths(excluded_paths: Vec<String>, app: AppHandle) -> Result
     let mut vault_lock = get_vault_lock().write();
     if let Some(ref mut vault) = *vault_lock {
         vault.set_excluded_paths(excluded_paths);
+        Ok(vault.scan())
+    } else {
+        Err("Vault not initialized".to_string())
+    }
+}
+
+#[tauri::command]
+pub fn get_excluded_tags(app: AppHandle) -> Vec<String> {
+    load_config(&app).excluded_tags
+}
+
+#[tauri::command]
+pub fn set_excluded_tags(excluded_tags: Vec<String>, app: AppHandle) -> Result<Vec<Task>, String> {
+    // Update config
+    let mut config = load_config(&app);
+    config.excluded_tags = excluded_tags.clone();
+    save_config(&app, &config)?;
+
+    // Update the vault's live list and rescan so the UI is consistent in one step
+    let mut vault_lock = get_vault_lock().write();
+    if let Some(ref mut vault) = *vault_lock {
+        vault.set_excluded_tags(excluded_tags);
         Ok(vault.scan())
     } else {
         Err("Vault not initialized".to_string())

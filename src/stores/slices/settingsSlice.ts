@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { SliceCreator, RootState } from './types';
 import { persist, storeError } from '../storeUtils';
 import { KEYBINDING_DEFAULTS } from '../../utils/keybindings';
-import { normalizeTagInput } from '../../utils/tags';
+import { normalizeTagInput, sameTag, tagsInclude } from '../../utils/tags';
 import {
   detectOpeners,
   refreshOpeners,
@@ -124,6 +124,7 @@ async function loadVault(
     get().fetchTags();
     get().fetchFolderPaths();
     get().fetchExcludedPaths();
+    get().fetchExcludedTags();
     get().fetchIsObsidianVault();
     get().loadPathOpeners();
     get().loadOpenerPrefs();
@@ -164,6 +165,7 @@ export interface SettingsSlice {
   recurringTemplateCount: number; // legacy templates detected in the vault (gates the migration UI)
   folderPaths: FolderPaths;
   excludedPaths: string[];
+  excludedTags: string[];
   theme: ThemePreference;
   /** Custom accent color (#rrggbb); null = default indigo from App.css */
   accentColor: string | null;
@@ -207,6 +209,10 @@ export interface SettingsSlice {
   addExcludedPath: (path: string) => Promise<void>;
   removeExcludedPath: (path: string) => Promise<void>;
   setExcludedPathsList: (excludedPaths: string[]) => Promise<void>;
+  fetchExcludedTags: () => Promise<void>;
+  addExcludedTag: (tag: string) => Promise<void>;
+  removeExcludedTag: (tag: string) => Promise<void>;
+  setExcludedTagsList: (excludedTags: string[]) => Promise<void>;
   setTheme: (theme: ThemePreference) => void;
   setAccentColor: (color: string | null) => void;
   setKeybinding: (action: string, keys: string) => void;
@@ -231,6 +237,7 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
   recurringTemplateCount: 0,
   folderPaths: DEFAULT_FOLDER_PATHS,
   excludedPaths: [],
+  excludedTags: [],
   theme: persisted.theme,
   accentColor: persisted.accentColor,
   keybindings: persisted.keybindings,
@@ -496,6 +503,39 @@ export const createSettingsSlice: SliceCreator<SettingsSlice> = (set, get) => ({
       invoke('set_annado_exclude_in_file', { relativePath: path, exclude: false }).catch(() => {});
     }
     set({ tasks, excludedPaths });
+  },
+
+  fetchExcludedTags: async () =>
+    guardedFetch(set, () => invoke<string[]>('get_excluded_tags'), (excludedTags) => set({ excludedTags })),
+
+  addExcludedTag: async (tag: string) => {
+    try {
+      const name = normalizeTagInput(tag);
+      const { excludedTags } = get();
+      if (!name || tagsInclude(excludedTags, name)) return;
+      const newTags = [...excludedTags, name];
+      const tasks = await invoke<Task[]>('set_excluded_tags', { excludedTags: newTags });
+      set({ tasks, excludedTags: newTags });
+    } catch (error) {
+      storeError(set, error);
+    }
+  },
+
+  removeExcludedTag: async (tag: string) => {
+    try {
+      const newTags = get().excludedTags.filter((t) => !sameTag(t, tag));
+      const tasks = await invoke<Task[]>('set_excluded_tags', { excludedTags: newTags });
+      set({ tasks, excludedTags: newTags });
+    } catch (error) {
+      storeError(set, error);
+    }
+  },
+
+  // Bulk setter (shared-config read-back): applies the list as-is — the UI-level
+  // task-marker guard deliberately does not apply here (last-write-wins contract).
+  setExcludedTagsList: async (excludedTags: string[]) => {
+    const tasks = await invoke<Task[]>('set_excluded_tags', { excludedTags });
+    set({ tasks, excludedTags });
   },
 
   setTheme: (theme: ThemePreference) => {

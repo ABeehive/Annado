@@ -24,6 +24,7 @@ describe('assembleSharedConfig', () => {
   beforeEach(() => {
     useTaskStore.setState({
       excludedPaths: ['Archive/'],
+      excludedTags: ['template'],
       projectColors: { 'Website Redesign': '#e84545' },
       tagColors: { design: '#5aa9e6' },
       taskFormat: 'annado',
@@ -32,12 +33,13 @@ describe('assembleSharedConfig', () => {
     });
   });
 
-  it('produces the six fields plus schema metadata', () => {
+  it('produces the seven fields plus schema metadata', () => {
     const out = assembleSharedConfig(useTaskStore.getState());
     expect(out).toEqual({
       schemaVersion: 1,
       generatedBy: 'annado-desktop',
       excludedPaths: ['Archive/'],
+      excludedTags: ['template'],
       projectColors: { 'Website Redesign': '#e84545' },
       tagColors: { design: '#5aa9e6' },
       taskFormat: 'annado',
@@ -46,9 +48,9 @@ describe('assembleSharedConfig', () => {
     });
   });
 
-  it('has exactly six synced fields in the sync map', () => {
+  it('has exactly seven synced fields in the sync map', () => {
     expect(SHARED_FIELDS.map((f) => f.key).sort()).toEqual(
-      ['excludedPaths', 'inheritFrontmatterTags', 'projectColors', 'tagColors', 'taskFormat', 'taskMarkerTag'].sort(),
+      ['excludedPaths', 'excludedTags', 'inheritFrontmatterTags', 'projectColors', 'tagColors', 'taskFormat', 'taskMarkerTag'].sort(),
     );
   });
 
@@ -77,6 +79,7 @@ describe('publishSharedConfig', () => {
     invokeMock.mockResolvedValue(undefined);
     useTaskStore.setState({
       excludedPaths: [],
+      excludedTags: [],
       projectColors: {},
       tagColors: {},
       taskFormat: 'annado',
@@ -110,6 +113,7 @@ describe('applySharedConfig', () => {
       projectColors: {},
       tagColors: {},
       excludedPaths: [],
+      excludedTags: [],
       taskFormat: 'annado',
       taskMarkerTag: '',
       inheritFrontmatterTags: false,
@@ -158,6 +162,18 @@ describe('applySharedConfig', () => {
 
     expect(useTaskStore.getState().projectColors).toEqual({ A: '#111111' });
   });
+
+  it('applies excludedTags via set_excluded_tags', async () => {
+    await applySharedConfig(JSON.stringify({ excludedTags: ['wachten'] }));
+    expect(invokeMock).toHaveBeenCalledWith('set_excluded_tags', { excludedTags: ['wachten'] });
+    expect(useTaskStore.getState().excludedTags).toEqual(['wachten']);
+  });
+
+  it('rejects a non-string-array excludedTags shape', async () => {
+    useTaskStore.setState({ excludedTags: ['keep'] });
+    await applySharedConfig(JSON.stringify({ excludedTags: 'wachten' }));
+    expect(useTaskStore.getState().excludedTags).toEqual(['keep']);
+  });
 });
 
 describe('setupSharedConfigSync', () => {
@@ -167,7 +183,7 @@ describe('setupSharedConfigSync', () => {
     vi.useFakeTimers();
     useTaskStore.setState({
       usedWithObsidianPlugin: true,
-      excludedPaths: [], projectColors: {}, tagColors: {},
+      excludedPaths: [], excludedTags: [], projectColors: {}, tagColors: {},
       taskFormat: 'annado', taskMarkerTag: '', inheritFrontmatterTags: false,
     });
   });
