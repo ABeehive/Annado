@@ -688,7 +688,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsProps) {
                       onChange={(e) => { setNewExcludedTag(e.target.value); setExcludedTagError(null); }}
                       onKeyDown={(e) => { if (e.key === 'Enter') submitExcludedTag(); }}
                       className="flex-1 px-3 py-2 text-[13px] bg-transparent border-b border-[#E8E8E8] dark:border-[#3A3A3A] text-[#1A1A1A] dark:text-[#E0E0E0] placeholder-[#C0C0C0] dark:placeholder-[#555] focus:outline-none focus:border-primary/40 transition-colors"
-                      placeholder="wachten"
+                      placeholder="personal"
                     />
                     <datalist id="excluded-tag-suggestions">
                       {availableTags.map((t) => (
