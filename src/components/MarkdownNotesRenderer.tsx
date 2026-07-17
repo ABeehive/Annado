@@ -23,11 +23,12 @@ type InlineToken =
   | { type: 'bold'; content: string }
   | { type: 'italic'; content: string }
   | { type: 'code'; content: string }
-  | { type: 'strikethrough'; content: string };
+  | { type: 'strikethrough'; content: string }
+  | { type: 'highlight'; content: string };
 
 // Split a line's text into inline markdown tokens.
 // Bold/italic regex is ordered so ** is checked before * to avoid consuming one star at a time.
-const INLINE_RE = /\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|`([^`]+)`|\*([^*\n]+)\*|_([^_\n]+)_/g;
+const INLINE_RE = /\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|==(.+?)==|`([^`]+)`|\*([^*\n]+)\*|_([^_\n]+)_/g;
 
 function tokenizeInline(text: string): InlineToken[] {
   const tokens: InlineToken[] = [];
@@ -44,9 +45,11 @@ function tokenizeInline(text: string): InlineToken[] {
     } else if (m[3] !== undefined) {
       tokens.push({ type: 'strikethrough', content: m[3] });
     } else if (m[4] !== undefined) {
-      tokens.push({ type: 'code', content: m[4] });
-    } else if (m[5] !== undefined || m[6] !== undefined) {
-      tokens.push({ type: 'italic', content: m[5] ?? m[6] });
+      tokens.push({ type: 'highlight', content: m[4] });
+    } else if (m[5] !== undefined) {
+      tokens.push({ type: 'code', content: m[5] });
+    } else if (m[6] !== undefined || m[7] !== undefined) {
+      tokens.push({ type: 'italic', content: m[6] ?? m[7] });
     }
     last = INLINE_RE.lastIndex;
   }
@@ -129,6 +132,8 @@ export function InlineMarkdown({
         if (tok.type === 'bold') return <strong key={i} className="font-semibold">{inner}</strong>;
         if (tok.type === 'italic') return <em key={i}>{inner}</em>;
         if (tok.type === 'strikethrough') return <s key={i} className="text-[#AAA] dark:text-[#666]">{inner}</s>;
+        // <mark> defaults to black-on-yellow UA styling, which breaks dark mode — inherit text color instead
+        if (tok.type === 'highlight') return <mark key={i} className="bg-[#FFF3A3] dark:bg-[#5C5320] text-inherit rounded-[2px] px-px">{inner}</mark>;
         return inner; // 'text'
       })}
     </>

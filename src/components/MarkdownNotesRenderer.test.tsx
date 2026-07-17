@@ -59,3 +59,25 @@ describe('markdown links survive emphasis tokenization', () => {
     expect(screen.getByRole('button', { name: 'doc' })).toBeInTheDocument();
   });
 });
+
+describe('==highlight== rendering', () => {
+  it('renders ==text== as a mark without the delimiters', () => {
+    render(<MarkdownNotesRenderer {...baseProps} notes="dit is ==PRIVACY== gevoelig" />);
+    expect(screen.getByText('PRIVACY').closest('mark')).not.toBeNull();
+    expect(screen.queryByText(/==/)).toBeNull();
+  });
+
+  it('highlights text next to a link', () => {
+    render(
+      <MarkdownNotesRenderer {...baseProps} notes="==read== [doc](/Users/demo/doc.pdf) now" />
+    );
+    expect(screen.getByText('read').closest('mark')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'doc' })).toBeInTheDocument();
+  });
+
+  it('leaves an unpaired == as plain text', () => {
+    render(<MarkdownNotesRenderer {...baseProps} notes="check a == b vandaag" />);
+    expect(screen.getByText('check a == b vandaag')).toBeInTheDocument();
+    expect(document.querySelector('mark')).toBeNull();
+  });
+});
